@@ -17,7 +17,7 @@ void standardize(std::vector<Vector>& vs) {
 	if (vs.size() <= 1) return;
 
 	Vector m(vs[0].size()), d(vs[0].size());
-	for (auto& x: vs) v::add(m, x);	
+	for (auto& x: vs) v::add(m, x);
 	v::scale(m, 1.0 / vs.size());
 
 	for (auto& x: vs) {
@@ -49,12 +49,12 @@ std::vector<SentenceP> load_sentences(const std::string& path, bool with_marker,
 		while (true) {
 			std::string s;
 			in >> s;
-			if (s.empty()) break;	
-			
+			if (s.empty()) break;
+
 			std::u16string us = Cvt<std::u16string>::from_utf8(s);
 			for (auto ch: us) {
 				if (is_word(ch)) {
-					if (sentence->tokens_.empty() && with_marker) 
+					if (sentence->tokens_.empty() && with_marker)
 						sentence->tokens_.push_back(MARKER);
 					sentence->tokens_.push_back(std::u16string(1, ch));
 
@@ -82,7 +82,7 @@ std::vector<SentenceP> load_sentences(const std::string& path, bool with_marker,
 
 			if (!sentence->tokens_.empty() && with_tag) close_tag(sentence);
 		}
-		
+
 		if (!sentence->tokens_.empty()) {
 			if (with_tag) close_tag(sentence);
 			if (with_marker) sentence->tokens_.push_back(MARKER);
@@ -99,7 +99,7 @@ std::vector<Vector> generate_samples(const Model& model, const SentenceP& senten
 	size_t n_tokens = sentence->tokens_.size();
 	size_t vecsize = model.word_vector_size();
 	Vector tmp((n_tokens + window) * vecsize);
-	for (int i=0; i<window/2; ++i) 
+	for (int i=0; i<window/2; ++i)
 		std::copy(marker.begin(), marker.end(), tmp.data() + i * vecsize);
 	for (size_t i=0; i<n_tokens; ++i) {
 		auto& s = sentence->tokens_[i];
@@ -107,7 +107,7 @@ std::vector<Vector> generate_samples(const Model& model, const SentenceP& senten
 		auto& cur = (w.empty()? marker: w);
 		std::copy(cur.begin(), cur.end(), tmp.data() + (i + window/2) * vecsize);
 	}
-	for (int i=0; i<window/2; ++i) 
+	for (int i=0; i<window/2; ++i)
 		std::copy(marker.begin(), marker.end(), tmp.data() + (i + window/2 + n_tokens) * vecsize);
 
 	std::vector<Vector> samples;

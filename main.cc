@@ -21,7 +21,7 @@ int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_v
 		std::string a, b, c, expected;
 		iss >> a >> b >> c >> expected;
 		lower(a); lower(b); lower(c); lower(expected);
-		
+
 		if (!model.has(a) || !model.has(b) || !model.has(c) || !model.has(expected)) {
 			printf("unhandled: %s %s %s %s\n", a.c_str(), b.c_str(), c.c_str(), expected.c_str());
 			++ignore;
@@ -34,7 +34,7 @@ int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_v
 		if (predict[0].first == expected) { ++ correct; ++almost_correct; }
 		else {
 			bool found = false;
-			for (auto& v: predict) { 
+			for (auto& v: predict) {
 				if (v.first == expected) { found = true; break; }
 			}
 			if (found) ++almost_correct;
@@ -44,7 +44,7 @@ int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_v
 
 	if (count > 0) printf("predict %lu out of %lu (%f%%), almost correct %lu (%f%%) ignore %lu\n", correct, count, correct * 100.0 / count, almost_correct, almost_correct * 100.0 / count, ignore);
 
-	return 0;	
+	return 0;
 }
 
 int main(int argc, const char *argv[])
@@ -78,7 +78,7 @@ int main(int argc, const char *argv[])
 	if (argc > 1 && std::string(argv[1]) == "test") {
 		std::swap(train, test);
 	}
-	
+
 	if (train) {
 		std::vector<SentenceP> sentences;
 
@@ -91,8 +91,8 @@ int main(int argc, const char *argv[])
 		while (true) {
 			std::string s;
 			in >> s;
-			if (s.empty()) break;	
-			
+			if (s.empty()) break;
+
 			++count;
 			sentence->tokens_.push_back(std::move(s));
 			if (count == max_sentence_len) {
@@ -102,7 +102,7 @@ int main(int argc, const char *argv[])
 				sentence.reset(new Sentence);
 			}
 		}
-		
+
 		if (!sentence->tokens_.empty())
 			sentences.push_back(std::move(sentence));
 

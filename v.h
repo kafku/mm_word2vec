@@ -18,7 +18,7 @@ namespace v {
 	  float operator[](size_t i) const { return *(first + i); }
 	};
 
-	template <class Vector1, class Vector2> inline float dot(const Vector1&x, const Vector2& y) { 
+	template <class Vector1, class Vector2> inline float dot(const Vector1&x, const Vector2& y) {
 		int m = x.size(); const float *xd = x.data(), *yd = y.data();
 		float sum = 0.0;
 		while (--m >= 0) sum += (*xd++) * (*yd++);
@@ -76,13 +76,13 @@ namespace v {
 		while (--m >= 0) { (*xd++) *= (*yd++); }
 	}
 
-	inline bool isfinite(const Vector& x) { 
-		for(auto const& i: x) { if (! std::isfinite(i)) return false; } 
+	inline bool isfinite(const Vector& x) {
+		for(auto const& i: x) { if (! std::isfinite(i)) return false; }
 		return true;
 	}
 
 #if 0
-	inline float dot(const Vector&x, const Vector& y) { 
+	inline float dot(const Vector&x, const Vector& y) {
 		int m = x.size(); const float *xd = x.data(), *yd = y.data();
 		float sum = 0.0;
 		while (--m >= 0) sum += (*xd++) * (*yd++);
