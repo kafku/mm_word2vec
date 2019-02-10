@@ -65,7 +65,7 @@ int main(int argc, const char *argv[])
 		("min-count,c", po::value<int>()->default_value(5), "The minimum frequency of words.")
 		("negative,n", po::value<int>()->default_value(5), "The number of negative samples.")
 		("alpha,a", po::value<float>()->default_value(0.025), "The initial learning rate.")
-		("min-alpha,b", po::value<float>()->default_value(0.00001), "The minimum learning rate.")
+		("min-alpha,b", po::value<float>()->default_value(0.0001), "The minimum learning rate.")
 		("n_workers,p", po::value<int>()->default_value(0), "The number of threads")
 		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text");
 
