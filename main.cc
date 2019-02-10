@@ -3,7 +3,9 @@
 
 #include "word2vec.h"
 #include <iostream>
+#include <string>
 #include <initializer_list>
+#include <boost/program_options.hpp>
 
 int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_vocab = 30000) {
 	std::ifstream in(questions);
@@ -49,14 +51,62 @@ int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_v
 
 int main(int argc, const char *argv[])
 {
-	Word2Vec<std::string> model(200);
+	// parse options
+	namespace po = boost::program_options;
+	po::options_description description("Allowed options for word2vec");
+	description.add_options()
+		("help,h", "help.")
+		("mode,m", po::value<std::string>()->default_value("train"), "Mode train/test.")
+		("input,i", po::value<std::string>(), "Input path.")
+		("output,o", po::value<std::string>()->default_value("./vectors.bin"), "Output path.")
+		("dim,d", po::value<int>()->default_value(300), "Dimensionality of word embedding.")
+		("window,w", po::value<int>()->default_value(5), "Window size.")
+		("sample,s", po::value<float>()->default_value(0.001), "Sampling probability.")
+		("min-count,c", po::value<int>()->default_value(5), "The minimum frequency of words.")
+		("negative,n", po::value<int>()->default_value(5), "The number of negative samples.")
+		("alpha,a", po::value<float>()->default_value(0.025), "The initial learning rate.")
+		("min-alpha,b", po::value<float>()->default_value(0.00001), "The minimum learning rate.")
+		("n_workers,p", po::value<int>()->default_value(0), "The number of threads")
+		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text");
+
+	po::positional_options_description pos_description;
+	pos_description.add("input", -1);
+
+	po::variables_map vm;
+	po::store(po::command_line_parser(argc, argv).options(description).positional(pos_description).run(), vm);
+	po::notify(vm);
+
+	if (vm.count("help")) {
+		std::cout << description << std::endl;
+		return 0;
+	}
+
+	const auto input_path = vm["input"].as<std::string>();
+	const auto output_path = vm["output"].as<std::string>();
+	const auto mode = vm["mode"].as<std::string>();
+	const auto dim = vm["dim"].as<int>();
+	const auto window = vm["window"].as<int>();
+	const auto sample = vm["sample"].as<float>();
+	const auto min_count = vm["min-count"].as<int>();
+	const auto negative = vm["negative"].as<int>();
+	const auto alpha = vm["alpha"].as<float>();
+	const auto min_alpha = vm["min-alpha"].as<float>();
+	const auto n_workers = vm["n_workers"].as<int>();
+	const auto file_format = vm["format"].as<std::string>();
+
+	// simple check for options
+	if ( mode != "train" && mode != "test")
+		throw po::validation_error(po::validation_error::invalid_option_value, "mode");
+
+	if ( file_format != "bin" && file_format != "text")
+		throw po::validation_error(po::validation_error::invalid_option_value, "format");
+
+	// initalize model
+	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha);
 	using Sentence = Word2Vec<std::string>::Sentence;
 	using SentenceP = Word2Vec<std::string>::SentenceP;
 
-	model.sample_ = 0;
-//	model.window_ = 10;
-//	model.phrase_ = true;
-	int n_workers = 4;
+	// model.phrase_ = true;
 
 	::srand(::time(NULL));
 
@@ -74,20 +124,19 @@ int main(int argc, const char *argv[])
 		}
 	};
 
-	bool train = true, test = false;
-	if (argc > 1 && std::string(argv[1]) == "test") {
-		std::swap(train, test);
-	}
+	using time_point_t = decltype(std::chrono::high_resolution_clock::now());
+	auto time_diff_sec = [](const time_point_t& start, const time_point_t& end) -> double {
+		return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000000.0;
+	};
 
-	if (train) {
+	if (mode == "train") {
 		std::vector<SentenceP> sentences;
 
 		size_t count =0;
 		const size_t max_sentence_len = 200;
 
 		SentenceP sentence(new Sentence);
-		// wget http://mattmahoney.net/dc/text8.zip
-		std::ifstream in("text8");
+		std::ifstream in(input_path);
 		while (true) {
 			std::string s;
 			in >> s;
@@ -117,17 +166,24 @@ int main(int argc, const char *argv[])
 		printf("train: %.4f seconds\n", std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count() / 1000000.0);
 
 		cstart = cend;
-		model.save("vectors.bin");
-		model.save_text("vectors.txt");
+		if (file_format == "bin") {
+			model.save(output_path);
+		}
+		else {
+			model.save_text(output_path);
+		}
 		cend = std::chrono::high_resolution_clock::now();
 		printf("save model: %.4f seconds\n", std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count() / 1000000.0);
-
-//		distance();
 	}
 
-	if (test) {
+	if (mode == "test") {
 		auto cstart = std::chrono::high_resolution_clock::now();
-		model.load("vectors.bin");
+		if (file_format == "bin") {
+			model.load(input_path);
+		}
+		else {
+			model.load_text(input_path);
+		}
 		auto cend = std::chrono::high_resolution_clock::now();
 		printf("load model: %.4f seconds\n", std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count() / 1000000.0);
 
