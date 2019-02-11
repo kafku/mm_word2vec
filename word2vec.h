@@ -537,22 +537,23 @@ private:
 		int count = 0;
 		int len = sentence.words_.size();
 		int reduced_window = rand() % window_;
-		for (int i=0; i<len; ++i) {
+		for (int i=0; i<len; ++i) { // loop: tokens in corpus
 			const Word& current = *sentence.words_[i];
 			size_t codelen = current.codes_.size();
 
 			int j = std::max(0, i - window_ + reduced_window);
 			int k = std::min(len, i + window_ + 1 - reduced_window);
-			for (; j < k; ++j) {
+			for (; j < k; ++j) { // loop: window
 				const Word *word = sentence.words_[j];
 				if (j == i || word->codes_.empty())
 					continue;
-				int word_index = word->index_;
+				int word_index = word->index_; // target-word index
 				auto& l1 = syn0_[word_index];
 
+				// udate parameters by Hierarchical Softmax
 				std::fill(work.begin(), work.end(), 0);
-				for (size_t b=0; b<codelen; ++b) {
-					int idx = current.points_[b];
+				for (size_t b=0; b<codelen; ++b) { // loop: path on the huffman's tree
+					int idx = current.points_[b]; // node index
 					auto& l2 = syn1_[idx];
 
 					float f = v::dot(l1, l2);
@@ -560,17 +561,13 @@ private:
 						continue;
 
 					int fi = int((f + max_exp) * (max_size / max_exp / 2.0));
+					f = table[fi]; // f = sigmoid(f);
 
-					f = table[fi];
-//				f = sigmoid(f);
 					float g = (1 - current.codes_[b] - f) * alpha;
 
-					v::saxpy(work, g, l2);
-					v::saxpy(l2, g, l1);
-
-//				work += syn1_[idx] * g;
-//				syn1_[idx] += syn0_[word_index] * g;
-				}
+					v::saxpy(work, g, l2); // work += syn1_[idx] * g;
+					v::saxpy(l2, g, l1); // syn1_[idx] += syn0_[word_index] * g;
+				} // end loop: path on the huffman's tree
 
 				//negative sampling
 #if 0
@@ -601,11 +598,10 @@ private:
 				}
 #endif
 
-//				syn0_[word_index] += work;
-				v::saxpy(l1, 1.0, work);
-			}
+				v::saxpy(l1, 1.0, work); // syn0_[word_index] += work;
+			} // end loop: window
 			++count;
-		}
+		} // end loop: tokens in corpus
 		return count;
 	}
 
