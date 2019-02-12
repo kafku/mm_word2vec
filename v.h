@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cmath>
 #include <vector>
 
 typedef std::vector<float> Vector;
@@ -10,7 +12,8 @@ namespace v {
 	  using Parent = std::pair<float *, float *>;
 	  template <typename... Arg> LightVector(Arg&& ... arg): Parent(std::forward<Arg>(arg) ...) {}
 
-	  float *data() const { return first; }
+	  float *data() { return first; }
+	  const float *data() const { return first; }
 	  size_t size() const { return std::distance(first, second); }
 	  bool empty() const  { return first == second; }
 
@@ -27,6 +30,7 @@ namespace v {
 
 	// saxpy: x = x + g * y; x = a * x + g * y
 	inline void saxpy(Vector& x, float g, const Vector& y) {
+
 		int m = x.size(); float *xd = x.data(); const float *yd = y.data();
 		while (--m >= 0) (*xd++) += g * (*yd++);
 	}
@@ -80,6 +84,20 @@ namespace v {
 		for(auto const& i: x) { if (! std::isfinite(i)) return false; }
 		return true;
 	}
+
+	// Note: expect row-major
+	struct LightMatrix: LightVector
+	{
+		template <typename... Arg> LightMatrix(const int _n_rows, const int _n_cols, Arg&& ... arg)
+			: LightVector(std::forward<Arg>(arg) ...), n_rows(_n_rows), n_cols(_n_cols) {}
+
+		LightVector row(size_t row_idx) const {
+			float* const row_start = first + row_idx * n_cols;
+			float* const row_end = row_start + n_cols;
+			return std::move(LightVector(row_start, row_end));
+		}
+		const int n_rows, n_cols;
+	};
 
 #if 0
 	inline float dot(const Vector&x, const Vector& y) {
