@@ -4,57 +4,64 @@
 #include <memory>
 #include <algorithm>
 #include <vector>
-#include <stack>
+#include <list>
 #include <unordered_map>
+
+//struct Code {
+//	std::vector<uint32_t> points_; // index of nodes on the path from leaf to root
+//	std::vector<uint8_t> codes_; // code of each nodes in huffman tree
+//};
+
+struct Node;
+using NodeP = std::shared_ptr<Node>;
+struct Node
+{
+	using Index = uint32_t; // FIXME: what if T::index_ is not int32_t?
+	using PointList = std::vector<Index>;
+	using CodeList = std::vector<uint8_t>;
+
+	Index index_; // node index
+	unsigned int count_;
+	NodeP left_, right_;
+
+	Node(const Index index, unsigned int count, NodeP left = nullptr, NodeP right = nullptr)
+		: index_(index), count_(count), left_(left), right_(right) {}
+
+	Node(const Node&) = delete;
+	const Node& operator=(const Node&) = delete;
+
+	PointList points_; // index of nodes on the path from leaf to root
+	CodeList codes_; // code of each nodes in huffman tree
+};
 
 
 template <typename T> //NOTE: T must have idex_ and counts_ as its member variable
 class HuffmanTree
 {
 public:
-	struct Node;
-	using NodeP = std::shared_ptr<Node>;
-	struct Node
-	{
-		int32_t index_; // node index FIXME: what if T::index_ is not int32_t?
-		unsigned int count_;
-		NodeP left_, right_;
-
-		Node(const int32_t index, unsigned int count, NodeP left = nullptr, NodeP right = nullptr)
-			: index_(index), count_(count), left_(left), right_(right) {}
-
-		Node(const Node&) = delete;
-		const Node& operator=(const Node&) = delete;
-
-		std::vector<uint32_t> points_; // index of nodes on the path from leaf to root
-		std::vector<uint8_t> codes_; // code of each nodes in huffman tree
-	};
-
-	struct Leaf : public Node
-	{
-		Leaf(const T* const pt, const int32_t index, unsigned int count)
-			: word_pt(pt), Node(index, count) {}
-
-		const T * const word_pt;
-	};
-
-	using LeafP = std::shared_ptr<Leaf>;
+	HuffmanTree() = default;
+	~HuffmanTree() = default;
 
 	void build_tree(const std::vector<T*>& words);
-	// TODO: how to get codes and points?
+	const Node::CodeList& encode(const T* words) {
+		return node_map[words->index_]->codes_;
+	};
+
+	const Node::PointList& get_points(const T* words) {
+		return node_map[words->index_]->points_;
+	}
 
 private:
-	std::vector<LeafP> leaf_nodes;
+	std::unordered_map<typename T::Index, NodeP> node_map;
 };
 
 
 template <typename T>
 void HuffmanTree<T>::build_tree(const std::vector<T*>& words) {
 	const auto n_words = words.size();
-	//syn1_.resize(n_words); //FIXME: n_words -> # of nodes
 
 	auto comp = [](const Node *n1, const Node *n2) { return n1->count_ > n2->count_; };
-	leaf_nodes.resize(n_words);
+	std::vector<NodeP> leaf_nodes(n_words);
 	auto max_word_id = words[0]->index_;
 	for (const auto& word : words) {
 		leaf_nodes.emplace_back(std::make_shared(word->index_, word->count_)); // add leaf nodes == words
@@ -78,7 +85,7 @@ void HuffmanTree<T>::build_tree(const std::vector<T*>& words) {
 
 	// set codes and IDs to
 	int max_depth = 0;
-	std::stack<std::tuple<NodeP, std::vector<uint32_t>, std::vector<uint8_t>>> child_node_stack;
+	std::list<std::tuple<NodeP, std::vector<uint32_t>, std::vector<uint8_t>>> child_node_stack;
 	child_node_stack.push_back(std::make_tuple(heap[0], std::vector<uint32_t>(), std::vector<uint8_t>()));
 	while (!child_node_stack.empty()) {
 		auto t = child_node_stack.back();
@@ -103,4 +110,9 @@ void HuffmanTree<T>::build_tree(const std::vector<T*>& words) {
 	}
 
 	std::cout << "built huffman tree with maximum node depth " << max_depth << std::endl;
+
+	// create map (index ----> nodes)
+	for (auto& node : leaf_nodes) {
+		node_map[node->index_] = node;
+	}
 }
