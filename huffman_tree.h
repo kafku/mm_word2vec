@@ -51,11 +51,10 @@ public:
 	~HuffmanTree() = default;
 
 	void build_tree(const std::vector<T*>& words);
-	const typename Node::CodeList& encode(const T* const words) {
+	inline const typename Node::CodeList& encode(const T* const words) {
 		return node_map[words->index_]->codes_;
 	};
-
-	const typename Node::PointList& get_points(const T* const words) {
+	inline const typename Node::PointList& get_points(const T* const words) {
 		return node_map[words->index_]->points_;
 	}
 
