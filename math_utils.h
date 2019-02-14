@@ -9,8 +9,8 @@ namespace cheap_math {
 	static constexpr int max_size = 1000; // NOTE: you need -ftemplate-depth=xxx option
 	static constexpr int max_exp = 6;
 
-	bool check_exp_scale(const float f) {
-		return !(f <= -max_exp || f >= max_exp);
+	bool is_out_of_exp_scale(const float f) {
+		return (f <= -max_exp || f >= max_exp);
 	}
 
 	template <int MAX_SIZE, int MAX_EXP>
