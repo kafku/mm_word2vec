@@ -57,7 +57,6 @@ int main(int argc, const char *argv[])
 	description.add_options()
 		("help,h", "help.")
 		("mode,m", po::value<std::string>()->default_value("train"), "Mode train/test.")
-		("input,i", po::value<std::string>(), "Input path.")
 		("output,o", po::value<std::string>()->default_value("./vectors.bin"), "Output path.")
 		("dim,d", po::value<int>()->default_value(300), "Dimensionality of word embedding.")
 		("window,w", po::value<int>()->default_value(5), "Window size.")
@@ -77,6 +76,7 @@ int main(int argc, const char *argv[])
 	po::notify(vm);
 
 	if (vm.count("help")) {
+		std::cout << "Usage : " << argv[0] << " [options] input_path" << std::endl;
 		std::cout << description << std::endl;
 		return 0;
 	}
