@@ -4,22 +4,38 @@
 #include <vector>
 #include <stack>
 #include <algorithm>
-#include "word2vec.h"
+#include <random>
+#include <boost/utility.hpp>
 #include "math_utils.h"
 #include "huffman_tree.h"
+#include "v.h"
 
 
 template <typename Word>
-class Syn1TrainStrategy
+struct Syn1TrainStrategy : private boost::noncopyable
 {
-public:
 
-	Syn1TrainStrategy(int layer1_size)
-		: layer1_size_(layer1_size){}
+	Syn1TrainStrategy(const int layer1_size, const int n_words)
+		: layer1_size_(layer1_size), n_words_(n_words)
+	{
+		// initialize syn1_ (n_words x layer1_size) with random values
+		syn1_.resize(n_words);
+		std::default_random_engine eng(::time(NULL));
+		std::uniform_real_distribution<float> rng(0.0, 1.0);
+		for (int i = 0; i < layer1_size; ++i) {
+			for (auto& s: syn1_) {
+				s.resize(layer1_size);
+				for (auto& x: s) x = (rng(eng) - 0.5) / layer1_size;
+			}
+		}
+	}
 	~Syn1TrainStrategy() {}
 
 	virtual void train_syn1(const Word *current_word, const Vector& l1,  const float learning_rate, Vector& work) = 0;
+
 	const int layer1_size_;
+	const int n_words_;
+	std::vector<Vector> syn1_;
 };
 
 
@@ -28,21 +44,16 @@ template <typename Word>
 class HierarchicalSoftmax : public Syn1TrainStrategy<Word>
 {
 public:
-	HierarchicalSoftmax(const int dim, const int layer1_size)
-		: Syn1TrainStrategy<Word>(layer1_size) {
-			// TODO: initialize syn1_ with value
-			for (int i; i < layer1_size; ++i){
-
-			}
+	HierarchicalSoftmax(const int layer1_size, const int n_words)
+		: Syn1TrainStrategy<Word>(layer1_size, n_words) {
 		};
 	~HierarchicalSoftmax() {};
 
 	void build_tree(const std::vector<Word*>& words);
-	virtual void train_syn1(const Word *current_word, const Vector& l1, const float learning_rate, Vector& work);
+	virtual void train_syn1(const Word *current_word, const Vector& l1, const float learning_rate, Vector& work) override;
 
 private:
 	HuffmanTree<Word> encoder;
-	std::vector<Vector> syn1_;
 };
 
 template <typename Word>
@@ -74,50 +85,52 @@ void HierarchicalSoftmax<Word>::train_syn1(const Word *current_word, const Vecto
 }
 
 
-
-
-
-
 // Updateing context layer by NegativeSampling
 template <typename Word>
 class NegativeSampling : public Syn1TrainStrategy<Word>
 {
 public:
-	NegativeSampling();
+	NegativeSampling(const int layer1_size, const int n_words, const int n_negative, const float power = 0.75)
+		: Syn1TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), power_(power){}
 	~NegativeSampling();
 
-	virtual void train_syn1(const Word *word, const Vector& l1, const float learning_rate, Vector& work);
-	virtual void get_grad_syn0(Vector& gradient);
+	void update_unigram_frequency(const std::vector<Word *>& words_) {
+		std::vector<double> unigram_prob(words_.size());
+		for (const auto& word : words_){
+			unigram_prob.emplace_back(std::pow(word->count_, power_));
+		}
+		distribution = std::discrete_distribution<size_t>(unigram_prob.begin(), unigram_prob.end());
+	}
+	virtual void train_syn1(const Word *current_word, const Vector& l1, const float learning_rate, Vector& work);
 
 private:
-	int n_negative;
-	std::vector<Vector> syn1neg_;
-	std::vector<int> unigram_; // unigram frequenceies
+	const int n_negative_;
+	const float power_;
+	std::discrete_distribution<size_t> distribution;
 };
 
 
 template <typename Word>
-void NegativeSampling<Word>::train_syn1(const Word *word, const Vector& l1, const float learning_rate, Vector& work) {
-	for (int d = 0; d < n_negative + 1; ++d) {
+void NegativeSampling<Word>::train_syn1(const Word *current_word, const Vector& l1, const float learning_rate, Vector& work) {
+	std::random_device seed_gen;
+	std::default_random_engine engine(seed_gen());
+	const auto& pred_word_idx = current_word->index_;
+	std::fill(work.begin(), work.end(), 0);
+	for (int d = 0; d < n_negative_ + 1; ++d) { // a predicted contex word & negative words
 		const int label = (d == 0? 1: 0);
 		int target = 0;
-		if (d == 0) target = i; // FIMXE: i = target position in the corpus
-		else {
-			target = unigram_[rand() % unigram_.size()];
-			if (target == 0) target = rand() % (vocab_.size() - 1) + 1;
-			if (target == i) continue;
+		if (d == 0) {
+			target = pred_word_idx;
+		}
+		else { // negative sampling
+			target = distribution(engine);
+			// if (target == 0) target = rand() % (vocab_.size() - 1) + 1;  //FIXME
+			if (target == pred_word_idx) continue;
 		}
 
-		auto& l2 = syn1neg_[target];
+		auto& l2 = syn1_[target];
 		const float f = v::dot(l1, l2);
-		float g = 0;
-		if (f > max_exp) g = (label - 1) * learning_rate;
-		else if (f < -max_exp) g = (label - 0) * learning_rate;
-		else {
-			// int fi = int((f + max_exp) * (max_size / max_exp / 2.0));
-			// g = (label - table[fi]) * learning_rate;
-			g = (label - cheap_math::sigmoid(f)) * learning_rate;
-		}
+		const float g = (label - cheap_math::sigmoid(f)) * learning_rate;
 
 		v::saxpy(work, g, l2); // work += syn1_[idx] * g
 		v::saxpy(l2, g, l1); // syn1_[idx] += syn0_[word_index] * g;
