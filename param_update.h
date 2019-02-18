@@ -94,7 +94,7 @@ public:
 		: Syn1TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), power_(power){}
 	~NegativeSampling();
 
-	void update_unigram_frequency(const std::vector<Word *>& words_) {
+	void update_distribution(const std::vector<Word *>& words_) {
 		std::vector<double> unigram_prob(words_.size());
 		for (const auto& word : words_){
 			unigram_prob.emplace_back(std::pow(word->count_, power_));
