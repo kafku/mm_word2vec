@@ -52,11 +52,17 @@ public:
 	~HuffmanTree() = default;
 
 	void build_tree(const std::vector<T*>& words);
-	inline const typename Node::CodeList& encode(const T* const words) {
-		return node_map[words->index_]->codes_;
-	};
-	inline const typename Node::PointList& get_points(const T* const words) {
-		return node_map[words->index_]->points_;
+	inline const typename Node::CodeList& encode(const T* const word) {
+		return node_map[word->index_]->codes_;
+	}
+	inline const typename Node::PointList& get_points(const T* const word) {
+		return node_map[word->index_]->points_;
+	}
+	const Node& get_node(const T* const word) {
+		return *node_map[word->index_];
+	}
+	const Node& get_node_by_index(const Index& idx) {
+		return *node_map[idx];
 	}
 
 private:
@@ -68,16 +74,21 @@ template <typename T>
 void HuffmanTree<T>::build_tree(const std::vector<T*>& words) {
 	const auto n_words = words.size();
 
+	std::cout << "  making heap..." << std::endl;
 	auto comp = [](const NodeP n1, const NodeP n2) { return n1->count_ > n2->count_; };
-	std::vector<NodeP> leaf_nodes(n_words);
+	std::vector<NodeP> leaf_nodes;
+	leaf_nodes.reserve(n_words);
 	for (const auto& word : words) {
-		leaf_nodes.emplace_back(std::make_shared<Node>(word->index_, word->count_)); // add leaf nodes == words
+		leaf_nodes.push_back(std::make_shared<Node>(word->index_, word->count_)); // add leaf nodes == words
 	}
-	std::vector<NodeP> heap(leaf_nodes.size());
+	std::vector<NodeP> heap;
+	heap.reserve(leaf_nodes.size());
 	std::copy(leaf_nodes.begin(), leaf_nodes.end(), std::back_inserter(heap));
 	std::make_heap(heap.begin(), heap.end(), comp);
+	std::cout << "  Leaf size : " << leaf_nodes.size() << std::endl;
 
 	// create the intermediate nodes
+	std::cout << "  Building tree.." << std::endl;
 	for (int i = 0; i < n_words - 1; ++i) {
 		std::pop_heap(heap.begin(), heap.end(), comp);
 		auto min1 = heap.back(); heap.pop_back();
@@ -89,6 +100,7 @@ void HuffmanTree<T>::build_tree(const std::vector<T*>& words) {
 	}
 
 	// set codes and IDs to leaf nodes
+	std::cout << "  Assigning codes..." << std::endl;
 	int max_depth = 0;
 	std::list<std::tuple<NodeP, std::vector<Index>, std::vector<uint8_t>>> child_node_stack;
 	child_node_stack.push_back(std::make_tuple(heap[0], std::vector<Index>(), std::vector<uint8_t>()));
