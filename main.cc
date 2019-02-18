@@ -53,7 +53,7 @@ int main(int argc, const char *argv[])
 {
 	// parse options
 	namespace po = boost::program_options;
-	po::options_description description("Allowed options for word2vec");
+	po::options_description description("Allowed options");
 	description.add_options()
 		("help,h", "help.")
 		("mode,m", po::value<std::string>()->default_value("train"), "Mode train/test.")
@@ -66,10 +66,11 @@ int main(int argc, const char *argv[])
 		("alpha,a", po::value<float>()->default_value(0.025), "The initial learning rate.")
 		("min-alpha,b", po::value<float>()->default_value(0.0001), "The minimum learning rate.")
 		("n_workers,p", po::value<int>()->default_value(0), "The number of threads")
-		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text");
+		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text")
+		("input_path", po::value<std::string>(), "Path to input file");
 
 	po::positional_options_description pos_description;
-	pos_description.add("input", -1);
+	pos_description.add("input_path", 1);
 
 	po::variables_map vm;
 	po::store(po::command_line_parser(argc, argv).options(description).positional(pos_description).run(), vm);
@@ -81,7 +82,7 @@ int main(int argc, const char *argv[])
 		return 0;
 	}
 
-	const auto input_path = vm["input"].as<std::string>();
+	const auto input_path = vm["input_path"].as<std::string>();
 	const auto output_path = vm["output"].as<std::string>();
 	const auto mode = vm["mode"].as<std::string>();
 	const auto dim = vm["dim"].as<int>();
@@ -100,6 +101,8 @@ int main(int argc, const char *argv[])
 
 	if ( file_format != "bin" && file_format != "text")
 		throw po::validation_error(po::validation_error::invalid_option_value, "format");
+
+	std::cout << "Input file: " << input_path << std::endl;
 
 	// initalize model
 	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha);
