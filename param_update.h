@@ -68,7 +68,6 @@ void HierarchicalSoftmax<Word>::train_syn1(const Word *current_word, const Vecto
 
 	// udate parameters by Hierarchical Softmax
 	const auto code_length = encoder.encode(current_word).size();
-	std::fill(work.begin(), work.end(), 0);
 	for (size_t b = 0; b < code_length; ++b) {
 		const int node_idx = encoder.encode(current_word)[b];
 		auto& l2 = syn1_[node_idx];
@@ -115,7 +114,6 @@ void NegativeSampling<Word>::train_syn1(const Word *current_word, const Vector& 
 	std::random_device seed_gen;
 	std::default_random_engine engine(seed_gen());
 	const auto& pred_word_idx = current_word->index_;
-	std::fill(work.begin(), work.end(), 0);
 	for (int d = 0; d < n_negative_ + 1; ++d) { // a predicted contex word & negative words
 		const int label = (d == 0? 1: 0);
 		int target = 0;
