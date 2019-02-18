@@ -19,9 +19,10 @@
 #include <sstream>
 
 #include <chrono>
-#include <stdio.h>
+#include <cstdio>
 
 #include "v.h"
+#include "param_update.h"
 
 #include "model_generated.h"
 
@@ -80,12 +81,8 @@ struct Word2Vec
 		int32_t index_;
 		String text_;
 		uint32_t count_;
-		Word *left_, *right_;
 
-		std::vector<uint8_t> codes_;
-		std::vector<uint32_t> points_;
-
-		Word(int32_t index, String text, uint32_t count, Word *left = 0, Word *right = 0) : index_(index), text_(text), count_(count), left_(left), right_(right) {}
+		Word(int32_t index, String text, uint32_t count) : index_(index), text_(text), count_(count) {}
 		Word(const Word&) = delete;
 		const Word& operator = (const Word&) = delete;
 	};
@@ -99,35 +96,29 @@ struct Word2Vec
 	};
 	typedef std::shared_ptr<Sentence> SentenceP;
 
-	std::vector<Vector> syn0_, syn1_;
+	std::vector<Vector> syn0_;
 	std::vector<Vector> syn0norm_;
-
-	//negative sampling
-	std::vector<Vector> syn1neg_;
-	std::vector<int> unigram_;
 
 	std::unordered_map<String, WordP> vocab_;
 	std::vector<Word *> words_;
 
-	int layer1_size_;
-	int window_;
+	const int layer1_size_; // # of units (embedding dim)
+	const int window_; // window size
 
-	//subsampling
-	float sample_;
+	const float sample_; // subsampling
 
-	int min_count_;
-	int negative_;
+	const int min_count_; // minimum frequency of word
+	const int negative_; // # of negative samples
 
-	float alpha_, min_alpha_;
+	const float alpha_, min_alpha_; // learning rate
 
-	bool phrase_;
-	float phrase_threshold_;
+	const bool phrase_;
+	const float phrase_threshold_;
 
-	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, int negative = 0, float alpha = 0.025, float min_alpha = 0.0001)
-		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count), negative_(negative)
-	, alpha_(alpha), min_alpha_(min_alpha)
-	, phrase_(false), phrase_threshold_(100)
-	{}
+
+	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, const std::string& train_method = "HS", int negative = 0, float alpha = 0.025, float min_alpha = 0.0001)
+		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count), syn1_train_method_(train_method), negative_(negative),
+		alpha_(alpha), min_alpha_(min_alpha), phrase_(false), phrase_threshold_(100) {}
 
 	bool has(const String& w) const { return vocab_.find(w) != vocab_.end(); }
 
@@ -155,7 +146,7 @@ struct Word2Vec
 		}
 		progress("word", vocab);
 
-		if (phrase_) {
+		if (phrase_) { // build phrase
 			count = 0;
 			int total_words = std::accumulate(vocab.begin(), vocab.end(), 0, [](int x, const std::pair<String, int>& v) { return x + v.second; });
 
@@ -200,13 +191,12 @@ struct Word2Vec
 
 			printf("using phrases\n");
 			vocab.swap(phrase_vocab);
-		}
+		} // build phrase
 
 		int n_words = vocab.size();
 		if (n_words <= 1) return -1;
 
 		words_.reserve(n_words);
-		auto comp = [](Word *w1, Word *w2) { return w1->count_ > w2->count_; };
 
 		for (auto& p: vocab) {
 			uint32_t count = p.second;
@@ -215,7 +205,8 @@ struct Word2Vec
 			auto r = vocab_.emplace(p.first, WordP(new Word{0, p.first, count}));
 			words_.push_back((r.first->second.get()));
 		}
-		std::sort(words_.begin(), words_.end(), comp);
+		std::sort(words_.begin(), words_.end(),
+				[](Word *w1, Word *w2) { return w1->count_ > w2->count_; });
 
 		int index = 0;
 		for (auto& w: words_) w->index_ = index++;
@@ -223,81 +214,30 @@ struct Word2Vec
 		printf("collected %lu distinct words with min_count=%d\n", vocab_.size(), min_count_);
 
 		n_words = words_.size();
-
-		std::vector<Word *> heap = words_;
-		std::make_heap(heap.begin(), heap.end(), comp);
-
-		std::vector<WordP> tmp;
-		for (int i=0; i<n_words-1; ++i) {
-			std::pop_heap(heap.begin(), heap.end(), comp);
-			auto min1 = heap.back(); heap.pop_back();
-			std::pop_heap(heap.begin(), heap.end(), comp);
-			auto min2 = heap.back(); heap.pop_back();
-			tmp.emplace_back(WordP(new Word{i + n_words, Cvt<String>::from_utf8(""), min1->count_ + min2->count_, min1, min2}));
-
-			heap.push_back(tmp.back().get());
-			std::push_heap(heap.begin(), heap.end(), comp);
+		if (syn1_train_method_ == "HS") { // Hierarchical Softmax
+			std::shared_ptr<HierarchicalSoftmax<Word>> HS_strategy = std::make_shared<HierarchicalSoftmax<Word>>(layer1_size_, n_words);
+			HS_strategy->build_tree(words_);
+			syn1_train_ = HS_strategy;
+		}
+		else if (syn1_train_method_ == "NS") { // Negative Sampling
+			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size_, n_words, negative_);
+			NS_strategy->build_tree(words_);
+			syn1_train_ = NS_strategy;
+		}
+		else {
+			// NOTE: invalid option
+			// TODO: show error message
+			return -1;
 		}
 
-		int max_depth = 0;
-		std::list<std::tuple<Word *, std::vector<uint32_t>, std::vector<uint8_t>>> stack;
-		stack.push_back(std::make_tuple(heap[0], std::vector<uint32_t>(), std::vector<uint8_t>()));
-		count = 0;
-		while (!stack.empty()) {
-			auto t = stack.back();
-			stack.pop_back();
-
-			Word *word = std::get<0>(t);
-			if (word->index_ < n_words) {
-				word->points_ = std::get<1>(t);
-				word->codes_ = std::get<2>(t);
-				max_depth = std::max((int)word->codes_.size(), max_depth);
-			}
-			else {
-				auto points = std::get<1>(t);
-				points.emplace_back(word->index_ - n_words);
-				auto codes1 = std::get<2>(t);
-				auto codes2 = codes1;
-				codes1.push_back(0); codes2.push_back(1);
-				stack.emplace_back(std::make_tuple(word->left_, points, codes1));
-				stack.emplace_back(std::make_tuple(word->right_, points, codes2));
-			}
-		}
-
-		printf("built huffman tree with maximum node depth %d\n", max_depth);
-
-		syn0_.resize(n_words);
-		syn1_.resize(n_words);
-
+		// initialize syn0_
 		std::default_random_engine eng(::time(NULL));
 		std::uniform_real_distribution<float> rng(0.0, 1.0);
+		syn0_.resize(n_words);
 		for (auto& s: syn0_) {
 			s.resize(layer1_size_);
 			for (auto& x: s) x = (rng(eng) - 0.5) / layer1_size_;
 		}
-		for (auto& s: syn1_) s.resize(layer1_size_);
-
-#if 0
-		//TODO: verify
-		if (negative_ > 0) {
-			syn1neg_.resize(n_words);
-			for (auto& s: syn1neg_) s.resize(layer1_size_);
-
-			unigram_.resize(1e8);
-			const float power = 0.75;
-			float sum = std::accumulate(words_.begin(), words_.end(), 0.0, [&power](float x, Word *word) { return x + ::pow(word->count_, power); });
-			float d1 = ::pow(words_[0]->count_, power) / sum;
-
-			int i = 0;
-			for (int a=0; a<unigram_.size(); ++a) {
-				unigram_[a] = i;
-				if (float(a) / unigram_.size() > d1) {
-					++i; d1 += ::pow(words_[i]->count_, power) / sum;
-				}
-				if (i >= words_.size()) i = words_.size() - 1;
-			}
-		}
-#endif
 
 		return 0;
 	}
@@ -306,7 +246,7 @@ struct Word2Vec
 		int total_words = std::accumulate(vocab_.begin(), vocab_.end(), 0,
 			[](int x, const std::pair<String, WordP>& p) { return (int)(x + p.second->count_); });
 		int current_words = 0;
-		float alpha0 = alpha_, min_alpha = min_alpha_;
+		const float alpha0 = alpha_, min_alpha = min_alpha_;
 
 		std::default_random_engine eng(::time(NULL));
 		std::uniform_real_distribution<float> rng(0.0, 1.0);
@@ -318,8 +258,8 @@ struct Word2Vec
 
 		printf("training %d sentences\n", n_sentences);
 
-		#pragma omp parallel for
-		for (size_t i=0; i <n_sentences; ++i) {
+		#pragma omp parallel for default(shared)
+		for (size_t i = 0; i < n_sentences; ++i) {
 			auto sentence = sentences[i].get();
 			if (sentence->tokens_.empty())
 				continue;
@@ -337,8 +277,7 @@ struct Word2Vec
 			}
 
 			float alpha = std::max(min_alpha, float(alpha0 * (1.0 - 1.0 * current_words / total_words)));
-			Vector work(layer1_size_);
-			size_t words = train_sentence(*sentence, alpha, work);
+			size_t words = train_sentence(*sentence, alpha);
 
 			#pragma omp atomic
 			current_words += words;
@@ -525,83 +464,31 @@ struct Word2Vec
 	}
 
 private:
-	int train_sentence(Sentence& sentence, float alpha, Vector& work) {
-		const int max_size = 1000;
-		const float max_exp = 6.0;
-		const static std::vector<float> table = [&](){
-				std::vector<float> x(max_size);
-				for (size_t i=0; i<max_size; ++i) { float f = exp( (i / float(max_size) * 2 -1) * max_exp); x[i] = f / (f + 1); }
-				return x;
-			}();
+	int train_sentence(const Sentence& sentence, const float alpha) {
+		Vector grad_syn0(layer1_size_);
 
 		int count = 0;
-		int len = sentence.words_.size();
-		int reduced_window = rand() % window_;
-		for (int i=0; i<len; ++i) { // loop: tokens in corpus
-			const Word& current = *sentence.words_[i];
-			size_t codelen = current.codes_.size();
+		const int sentence_length = sentence.words_.size();
+		const int reduced_window = rand() % window_;
+		for (int i = 0; i < sentence_length; ++i) { // loop: tokens in corpus
+			const Word& current_word = *sentence.words_[i];
 
 			int j = std::max(0, i - window_ + reduced_window);
-			int k = std::min(len, i + window_ + 1 - reduced_window);
+			int k = std::min(sentence_length, i + window_ + 1 - reduced_window);
 			for (; j < k; ++j) { // loop: window
-				const Word *word = sentence.words_[j];
-				if (j == i || word->codes_.empty())
-					continue;
-				int word_index = word->index_; // target-word index
-				auto& l1 = syn0_[word_index];
+				if (j == i) continue;
+				const Word *word = sentence.words_[j]; // predicted-word index
+				const int word_index = word->index_;
+				auto& l1 = syn0_[current_word->index_];
 
 				// udate parameters by Hierarchical Softmax
-				std::fill(work.begin(), work.end(), 0);
-				for (size_t b=0; b<codelen; ++b) { // loop: path on the huffman's tree
-					int idx = current.points_[b]; // node index
-					auto& l2 = syn1_[idx];
-
-					float f = v::dot(l1, l2);
-					if (f <= -max_exp || f >= max_exp)
-						continue;
-
-					int fi = int((f + max_exp) * (max_size / max_exp / 2.0));
-					f = table[fi]; // f = sigmoid(f);
-
-					float g = (1 - current.codes_[b] - f) * alpha;
-
-					v::saxpy(work, g, l2); // work += syn1_[idx] * g;
-					v::saxpy(l2, g, l1); // syn1_[idx] += syn0_[word_index] * g;
-				} // end loop: path on the huffman's tree
-
-				//negative sampling
-#if 0
-				if (negative_ > 0) {
-					for (int d = 0; d < negative_ + 1; ++d) {
-						int label = (d == 0? 1: 0);
-						int target = 0;
-						if (d == 0) target = i;
-						else {
-							target = unigram_[rand() % unigram_.size()];
-							if (target == 0) target = rand() % (vocab_.size() - 1) + 1;
-							if (target == i) continue;
-						}
-
-						auto& l2 = syn1neg_[target];
-						float f = v::dot(l1, l2), g = 0;
-						if (f > max_exp) g = (label - 1) * alpha;
-						else if (f < -max_exp) g = (label - 0) * alpha;
-						else {
-							int fi = int((f + max_exp) * (max_size / max_exp / 2.0));
-							g = (label - table[fi]) * alpha;
-						}
-
-						v::saxpy(work, g, l2);
-						v::saxpy(l2, g, l1);
-
-					}
-				}
-#endif
-
-				v::saxpy(l1, 1.0, work); // syn0_[word_index] += work;
+				std::fill(grad_syn0.begin(), grad_syn0.end(), 0);
+				syn1_train_->train_syn1(word, l1, alpha, grad_syn0); // update syn1_
+				v::saxpy(l1, 1.0, grad_syn0); // syn0_[word_index] += grad_syn0;
 			} // end loop: window
 			++count;
 		} // end loop: tokens in corpus
+
 		return count;
 	}
 
@@ -612,5 +499,8 @@ private:
 		return 0;
 	}
 
+	// training strategy
+	std::string syn1_train_method_; // "NS" : negative sampling, "HS" : hierarchical softmax
+	std::shared_ptr<Syn1TrainStrategy<Word>> syn1_train_;
 };
 
