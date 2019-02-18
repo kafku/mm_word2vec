@@ -78,7 +78,8 @@ struct Word2Vec
 
 	struct Word
 	{
-		int32_t index_;
+		using Index = uint32_t;
+		Index index_;
 		String text_;
 		uint32_t count_;
 
@@ -102,7 +103,7 @@ struct Word2Vec
 	std::unordered_map<String, WordP> vocab_;
 	std::vector<Word *> words_;
 
-	const int layer1_size_; // # of units (embedding dim)
+	int layer1_size_; // # of units (embedding dim)
 	const int window_; // window size
 
 	const float sample_; // subsampling
@@ -116,7 +117,7 @@ struct Word2Vec
 	const float phrase_threshold_;
 
 
-	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, const std::string& train_method = "HS", int negative = 0, float alpha = 0.025, float min_alpha = 0.0001)
+	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, int negative = 0, float alpha = 0.025, float min_alpha = 0.0001, const std::string& train_method = "HS")
 		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count), syn1_train_method_(train_method), negative_(negative),
 		alpha_(alpha), min_alpha_(min_alpha), phrase_(false), phrase_threshold_(100) {}
 
@@ -221,7 +222,7 @@ struct Word2Vec
 		}
 		else if (syn1_train_method_ == "NS") { // Negative Sampling
 			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size_, n_words, negative_);
-			NS_strategy->build_tree(words_);
+			NS_strategy->update_distribution(words_);
 			syn1_train_ = NS_strategy;
 		}
 		else {
@@ -478,13 +479,12 @@ private:
 			for (; j < k; ++j) { // loop: window
 				if (j == i) continue;
 				const Word *word = sentence.words_[j]; // predicted-word index
-				const int word_index = word->index_;
-				auto& l1 = syn0_[current_word->index_];
+				auto& l1 = syn0_[current_word.index_];
 
 				// udate parameters by Hierarchical Softmax
 				std::fill(grad_syn0.begin(), grad_syn0.end(), 0);
 				syn1_train_->train_syn1(word, l1, alpha, grad_syn0); // update syn1_
-				v::saxpy(l1, 1.0, grad_syn0); // syn0_[word_index] += grad_syn0;
+				v::saxpy(l1, 1.0, grad_syn0); // syn0_[current_word->index] += grad_syn0;
 			} // end loop: window
 			++count;
 		} // end loop: tokens in corpus

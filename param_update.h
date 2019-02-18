@@ -70,7 +70,7 @@ void HierarchicalSoftmax<Word>::train_syn1(const Word *current_word, const Vecto
 	const auto code_length = encoder.encode(current_word).size();
 	for (size_t b = 0; b < code_length; ++b) {
 		const int node_idx = encoder.encode(current_word)[b];
-		auto& l2 = syn1_[node_idx];
+		auto& l2 = this->syn1_[node_idx];
 
 		const float f = v::dot(l1, l2);
 		if (cheap_math::is_out_of_exp_scale(f))
@@ -91,7 +91,7 @@ class NegativeSampling : public Syn1TrainStrategy<Word>
 public:
 	NegativeSampling(const int layer1_size, const int n_words, const int n_negative, const float power = 0.75)
 		: Syn1TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), power_(power){}
-	~NegativeSampling();
+	~NegativeSampling() = default;
 
 	void update_distribution(const std::vector<Word *>& words_) {
 		std::vector<double> unigram_prob(words_.size());
@@ -126,7 +126,7 @@ void NegativeSampling<Word>::train_syn1(const Word *current_word, const Vector& 
 			if (target == pred_word_idx) continue;
 		}
 
-		auto& l2 = syn1_[target];
+		auto& l2 = this->syn1_[target];
 		const float f = v::dot(l1, l2);
 		const float g = (label - cheap_math::sigmoid(f)) * learning_rate;
 

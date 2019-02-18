@@ -44,8 +44,9 @@ template <typename T> //NOTE: T must have index_ and counts_ as its member varia
 class HuffmanTree
 {
 public:
-	using Node = _Node<typename T::Index>;
-	using NodeP = _NodeP<typename T::Index>;
+	using Index = typename T::Index;
+	using Node = _Node<Index>;
+	using NodeP = _NodeP<Index>;
 
 	HuffmanTree() = default;
 	~HuffmanTree() = default;
@@ -67,7 +68,7 @@ template <typename T>
 void HuffmanTree<T>::build_tree(const std::vector<T*>& words) {
 	const auto n_words = words.size();
 
-	auto comp = [](const Node *n1, const Node *n2) { return n1->count_ > n2->count_; };
+	auto comp = [](const NodeP n1, const NodeP n2) { return n1->count_ > n2->count_; };
 	std::vector<NodeP> leaf_nodes(n_words);
 	for (const auto& word : words) {
 		leaf_nodes.emplace_back(std::make_shared<Node>(word->index_, word->count_)); // add leaf nodes == words
@@ -89,8 +90,8 @@ void HuffmanTree<T>::build_tree(const std::vector<T*>& words) {
 
 	// set codes and IDs to leaf nodes
 	int max_depth = 0;
-	std::list<std::tuple<NodeP, std::vector<uint32_t>, std::vector<uint8_t>>> child_node_stack;
-	child_node_stack.push_back(std::make_tuple(heap[0], std::vector<uint32_t>(), std::vector<uint8_t>()));
+	std::list<std::tuple<NodeP, std::vector<Index>, std::vector<uint8_t>>> child_node_stack;
+	child_node_stack.push_back(std::make_tuple(heap[0], std::vector<Index>(), std::vector<uint8_t>()));
 	while (!child_node_stack.empty()) {
 		auto t = child_node_stack.back();
 		child_node_stack.pop_back();
