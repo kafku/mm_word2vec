@@ -18,16 +18,9 @@ struct Syn1TrainStrategy : private boost::noncopyable
 	Syn1TrainStrategy(const int layer1_size, const int n_words)
 		: layer1_size_(layer1_size), n_words_(n_words)
 	{
-		// initialize syn1_ (n_words x layer1_size) with random values
+		std::cout << "Initializing syn1_..." << std::endl;
 		syn1_.resize(n_words);
-		std::default_random_engine eng(::time(NULL));
-		std::uniform_real_distribution<float> rng(0.0, 1.0);
-		for (int i = 0; i < layer1_size; ++i) {
-			for (auto& s: syn1_) {
-				s.resize(layer1_size);
-				for (auto& x: s) x = (rng(eng) - 0.5) / layer1_size;
-			}
-		}
+		for (auto& s: syn1_) s.resize(layer1_size);
 	}
 	~Syn1TrainStrategy() {}
 
@@ -67,16 +60,15 @@ void HierarchicalSoftmax<Word>::train_syn1(const Word *current_word, const Vecto
 	//	return;
 
 	// udate parameters by Hierarchical Softmax
-	const auto code_length = encoder.encode(current_word).size();
+	const auto& codes = encoder.encode(current_word);
+	const auto& points = encoder.get_points(current_word);
+	const auto code_length = codes.size();
 	for (size_t b = 0; b < code_length; ++b) {
-		const int node_idx = encoder.encode(current_word)[b];
+		const int node_idx = points[b];
 		auto& l2 = this->syn1_[node_idx];
 
 		const float f = v::dot(l1, l2);
-		if (cheap_math::is_out_of_exp_scale(f))
-			return;
-
-		const float g = (1 - encoder.encode(current_word)[b] - cheap_math::sigmoid(f)) * learning_rate;
+		const float g = (1 - codes[b] - cheap_math::sigmoid(f)) * learning_rate;
 
 		v::saxpy(work, g, l2); // work += syn1_[idx] * g;
 		v::saxpy(l2, g, l1); // syn1_[idx] += syn0_[word_index] * g;
