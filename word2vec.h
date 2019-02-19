@@ -116,10 +116,13 @@ struct Word2Vec
 	const bool phrase_;
 	const float phrase_threshold_;
 
+	const int iter_;
 
-	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, int negative = 0, float alpha = 0.025, float min_alpha = 0.0001, const std::string& train_method = "HS")
+
+	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, int negative = 5,
+			float alpha = 0.025, float min_alpha = 0.0001, const std::string& train_method = "HS", const int iter = 5)
 		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count), syn1_train_method_(train_method), negative_(negative),
-		alpha_(alpha), min_alpha_(min_alpha), phrase_(false), phrase_threshold_(100) {}
+		alpha_(alpha), min_alpha_(min_alpha), iter_(iter), phrase_(false), phrase_threshold_(100) {}
 
 	bool has(const String& w) const { return vocab_.find(w) != vocab_.end(); }
 
@@ -216,11 +219,13 @@ struct Word2Vec
 
 		n_words = words_.size();
 		if (syn1_train_method_ == "HS") { // Hierarchical Softmax
+			std::cout << "Training method: Hierarchical Softmax" << std::endl;
 			std::shared_ptr<HierarchicalSoftmax<Word>> HS_strategy = std::make_shared<HierarchicalSoftmax<Word>>(layer1_size_, n_words);
 			HS_strategy->build_tree(words_);
 			syn1_train_ = HS_strategy;
 		}
 		else if (syn1_train_method_ == "NS") { // Negative Sampling
+			std::cout << "Training method: Negative Sampling" << std::endl;
 			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size_, n_words, negative_);
 			NS_strategy->update_distribution(words_);
 			syn1_train_ = NS_strategy;
@@ -231,7 +236,7 @@ struct Word2Vec
 			return -1;
 		}
 
-		// initialize syn0_
+		std::cout << "Initializing syn0_..." << std::endl;
 		std::default_random_engine eng(::time(NULL));
 		std::uniform_real_distribution<float> rng(0.0, 1.0);
 		syn0_.resize(n_words);
@@ -244,9 +249,9 @@ struct Word2Vec
 	}
 
 	int train(std::vector<SentenceP>& sentences, int n_workers) {
-		int total_words = std::accumulate(vocab_.begin(), vocab_.end(), 0,
+		const int total_words = std::accumulate(vocab_.begin(), vocab_.end(), 0,
 			[](int x, const std::pair<String, WordP>& p) { return (int)(x + p.second->count_); });
-		int current_words = 0;
+		unsigned long current_words = 0;
 		const float alpha0 = alpha_, min_alpha = min_alpha_;
 
 		std::default_random_engine eng(::time(NULL));
@@ -260,7 +265,7 @@ struct Word2Vec
 		printf("training %d sentences\n", n_sentences);
 
 		#pragma omp parallel for default(shared)
-		for (size_t i = 0; i < n_sentences; ++i) {
+		for (size_t i = 0; i < n_sentences; ++i) { // parallel train
 			auto sentence = sentences[i].get();
 			if (sentence->tokens_.empty())
 				continue;
@@ -277,20 +282,24 @@ struct Word2Vec
 				sentence->words_.emplace_back(it->second.get());
 			}
 
-			float alpha = std::max(min_alpha, float(alpha0 * (1.0 - 1.0 * current_words / total_words)));
-			size_t words = train_sentence(*sentence, alpha);
+			for (int i = 0; i < iter_; ++i) { // iterations
+				float alpha = std::max(min_alpha, float(alpha0 * (1.0 - 1.0 * current_words / (iter_ * total_words))));
+				size_t words = train_sentence(*sentence, alpha);
 
-			#pragma omp atomic
-			current_words += words;
+				#pragma omp atomic
+				current_words += words;
 
-			if (current_words - last_words > 1024 * 100 || i == n_sentences - 1) {
-				auto cend = std::chrono::high_resolution_clock::now();
-				auto duration = std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count();
-				printf("training alpha: %.4f progress: %.2f%% words per sec: %.3fK\n", alpha, current_words * 100.0/total_words, (current_words - last_words) * 1000.0 / duration);
-				last_words = current_words;
-				cstart = cend;
-			}
-		}
+				if (current_words - last_words > 1024 * 100 || i == n_sentences - 1) {
+					auto cend = std::chrono::high_resolution_clock::now();
+					auto duration = std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count();
+					printf("training alpha: %.4f progress: %.2f%% words per sec: %.3fK\n", alpha,
+							current_words * 100.0/(iter_ * total_words),
+							(current_words - last_words) * 1000.0 / duration);
+					last_words = current_words;
+					cstart = cend;
+				}
+			} // iterations
+		} // parallel train
 
 		syn0norm_ = syn0_;
 		for (auto& v: syn0norm_) v::unit(v);
@@ -475,7 +484,7 @@ private:
 			const Word& current_word = *sentence.words_[i];
 
 			int j = std::max(0, i - window_ + reduced_window);
-			int k = std::min(sentence_length, i + window_ + 1 - reduced_window);
+			const int k = std::min(sentence_length, i + window_ + 1 - reduced_window);
 			for (; j < k; ++j) { // loop: window
 				if (j == i) continue;
 				const Word *word = sentence.words_[j]; // predicted-word index
