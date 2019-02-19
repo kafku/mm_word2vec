@@ -109,7 +109,7 @@ void NegativeSampling<Word>::train_syn1(const Word *current_word, const Vector& 
 	const auto& pred_word_idx = current_word->index_;
 	for (int d = 0; d < n_negative_ + 1; ++d) { // a predicted contex word & negative words
 		const int label = (d == 0? 1: 0);
-		int target = 0;
+		size_t target = 0;
 		if (d == 0) {
 			target = pred_word_idx;
 		}
