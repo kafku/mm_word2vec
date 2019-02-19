@@ -86,7 +86,8 @@ public:
 	~NegativeSampling() = default;
 
 	void update_distribution(const std::vector<Word *>& words_) {
-		std::vector<double> unigram_prob(words_.size());
+		std::vector<double> unigram_prob;
+		unigram_prob.reserve(words_.size());
 		for (const auto& word : words_){
 			unigram_prob.emplace_back(std::pow(word->count_, power_));
 		}
