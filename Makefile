@@ -1,4 +1,4 @@
-TARGET=word2vec word2vec_zh #mm_word2vec
+TARGET=word2vec #word2vec_zh #mm_word2vec
 
 CXX=g++
 OPTI = -Ofast
@@ -6,7 +6,7 @@ WARN = -Wall
 OMP = -fopenmp
 DBG = #-g
 INCLUDE=-I/usr/include
-CXX_FLAGS=$(DBG) $(WARN) $(OPTI) $(OMP) -std=c++11 -march=native -funroll-loops
+CXX_FLAGS=$(DBG) $(WARN) $(OPTI) $(OMP) -std=c++11 -march=native -funroll-loops -ftemplate-depth=1010
 LD_FLAGS=-lpthread -lboost_program_options
 
 

@@ -53,11 +53,10 @@ int main(int argc, const char *argv[])
 {
 	// parse options
 	namespace po = boost::program_options;
-	po::options_description description("Allowed options for word2vec");
+	po::options_description description("Allowed options");
 	description.add_options()
 		("help,h", "help.")
 		("mode,m", po::value<std::string>()->default_value("train"), "Mode train/test.")
-		("input,i", po::value<std::string>(), "Input path.")
 		("output,o", po::value<std::string>()->default_value("./vectors.bin"), "Output path.")
 		("dim,d", po::value<int>()->default_value(300), "Dimensionality of word embedding.")
 		("window,w", po::value<int>()->default_value(5), "Window size.")
@@ -67,21 +66,25 @@ int main(int argc, const char *argv[])
 		("alpha,a", po::value<float>()->default_value(0.025), "The initial learning rate.")
 		("min-alpha,b", po::value<float>()->default_value(0.0001), "The minimum learning rate.")
 		("n_workers,p", po::value<int>()->default_value(0), "The number of threads")
-		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text");
+		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text")
+		("iteration,i", po::value<int>()->default_value(5), "The number of iterations")
+		("method,M", po::value<std::string>()->default_value("HS"), "Methos: HierarchicalSoftmax(HS)/NegativeSampling(NS)")
+		("input_path", po::value<std::string>(), "Path to input file");
 
 	po::positional_options_description pos_description;
-	pos_description.add("input", -1);
+	pos_description.add("input_path", 1);
 
 	po::variables_map vm;
 	po::store(po::command_line_parser(argc, argv).options(description).positional(pos_description).run(), vm);
 	po::notify(vm);
 
 	if (vm.count("help")) {
+		std::cout << "Usage : " << argv[0] << " [options] input_path" << std::endl;
 		std::cout << description << std::endl;
 		return 0;
 	}
 
-	const auto input_path = vm["input"].as<std::string>();
+	const auto input_path = vm["input_path"].as<std::string>();
 	const auto output_path = vm["output"].as<std::string>();
 	const auto mode = vm["mode"].as<std::string>();
 	const auto dim = vm["dim"].as<int>();
@@ -93,6 +96,8 @@ int main(int argc, const char *argv[])
 	const auto min_alpha = vm["min-alpha"].as<float>();
 	const auto n_workers = vm["n_workers"].as<int>();
 	const auto file_format = vm["format"].as<std::string>();
+	const auto n_iterations = vm["iteration"].as<int>();
+	const auto train_method = vm["method"].as<std::string>();
 
 	// simple check for options
 	if ( mode != "train" && mode != "test")
@@ -101,8 +106,13 @@ int main(int argc, const char *argv[])
 	if ( file_format != "bin" && file_format != "text")
 		throw po::validation_error(po::validation_error::invalid_option_value, "format");
 
+	if ( train_method != "HS" && train_method != "NS")
+		throw po::validation_error(po::validation_error::invalid_option_value, "method");
+
+	std::cout << "Input file: " << input_path << std::endl;
+
 	// initalize model
-	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha);
+	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha, train_method, n_iterations);
 	using Sentence = Word2Vec<std::string>::Sentence;
 	using SentenceP = Word2Vec<std::string>::SentenceP;
 
