@@ -1,4 +1,4 @@
-TARGET=word2vec word2vec_zh #mm_word2vec
+TARGET=word2vec #word2vec_zh #mm_word2vec
 
 CXX=g++
 OPTI = -Ofast
