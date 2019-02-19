@@ -226,6 +226,7 @@ struct Word2Vec
 		}
 		else if (syn1_train_method_ == "NS") { // Negative Sampling
 			std::cout << "Training method: Negative Sampling" << std::endl;
+			std::cout << "  # of negative samples : " << negative_ << std::endl;
 			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size_, n_words, negative_);
 			NS_strategy->update_distribution(words_);
 			syn1_train_ = NS_strategy;
@@ -262,7 +263,8 @@ struct Word2Vec
 		size_t last_words = 0;
 		auto cstart = std::chrono::high_resolution_clock::now();
 
-		printf("training %d sentences\n", n_sentences);
+		printf("Training %d sentences\n", n_sentences);
+		std::cout << "  iteration: " << iter_ << std::endl;
 
 		#pragma omp parallel for default(shared)
 		for (size_t i = 0; i < n_sentences; ++i) { // parallel train
