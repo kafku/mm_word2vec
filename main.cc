@@ -67,6 +67,8 @@ int main(int argc, const char *argv[])
 		("min-alpha,b", po::value<float>()->default_value(0.0001), "The minimum learning rate.")
 		("n_workers,p", po::value<int>()->default_value(0), "The number of threads")
 		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text")
+		("iteration,i", po::value<int>()->default_value(5), "The number of iterations")
+		("method,M", po::value<std::string>()->default_value("HS"), "Methos: HierarchicalSoftmax(HS)/NegativeSampling(NS)")
 		("input_path", po::value<std::string>(), "Path to input file");
 
 	po::positional_options_description pos_description;
@@ -94,6 +96,8 @@ int main(int argc, const char *argv[])
 	const auto min_alpha = vm["min-alpha"].as<float>();
 	const auto n_workers = vm["n_workers"].as<int>();
 	const auto file_format = vm["format"].as<std::string>();
+	const auto n_iterations = vm["iteration"].as<int>();
+	const auto train_method = vm["method"].as<std::string>();
 
 	// simple check for options
 	if ( mode != "train" && mode != "test")
@@ -102,10 +106,13 @@ int main(int argc, const char *argv[])
 	if ( file_format != "bin" && file_format != "text")
 		throw po::validation_error(po::validation_error::invalid_option_value, "format");
 
+	if ( train_method != "HS" && train_method != "NS")
+		throw po::validation_error(po::validation_error::invalid_option_value, "method");
+
 	std::cout << "Input file: " << input_path << std::endl;
 
 	// initalize model
-	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha);
+	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha, train_method, n_iterations);
 	using Sentence = Word2Vec<std::string>::Sentence;
 	using SentenceP = Word2Vec<std::string>::SentenceP;
 
