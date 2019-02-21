@@ -62,7 +62,7 @@ struct Word2Vec
 	};
 	typedef std::shared_ptr<Sentence> SentenceP;
 
-	std::vector<Vector> syn0_;
+	std::shared_ptr<Syn0TrainStrategy<Word>> syn0_train_;
 	std::vector<Vector> syn0norm_;
 
 	std::unordered_map<String, WordP> vocab_;
@@ -202,14 +202,7 @@ struct Word2Vec
 			return -1;
 		}
 
-		std::cout << "Initializing syn0_..." << std::endl;
-		std::default_random_engine eng(::time(NULL));
-		std::uniform_real_distribution<float> rng(0.0, 1.0);
-		syn0_.resize(n_words);
-		for (auto& s: syn0_) {
-			s.resize(layer1_size_);
-			for (auto& x: s) x = (rng(eng) - 0.5) / layer1_size_;
-		}
+		syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size_, n_words);
 
 		return 0;
 	}
@@ -268,7 +261,7 @@ struct Word2Vec
 			} // iterations
 		} // parallel train
 
-		syn0norm_ = syn0_;
+		syn0norm_ = syn0_train_->syn0_;
 		for (auto& v: syn0norm_) v::unit(v);
 
 		return 0;
@@ -283,7 +276,7 @@ struct Word2Vec
 		std::vector<flatbuffers::Offset<word2vec::Word>> ws;
 		for (auto w: words) {
 			auto name = fbb.CreateString(Cvt<String>::to_utf8(w->text_));
-			ws.push_back(word2vec::CreateWord(fbb, name, fbb.CreateVector(syn0_[w->index_])));
+			ws.push_back(word2vec::CreateWord(fbb, name, fbb.CreateVector(syn0_train_->syn0_[w->index_])));
 		}
 
 		auto dict = word2vec::CreateDict(fbb, fbb.CreateVector(ws.data(), ws.size()));
@@ -296,14 +289,14 @@ struct Word2Vec
 
 	int save_text(const std::string& file) const {
 		std::ofstream out(file, std::ofstream::out);
-		out << syn0_.size() << " " << syn0_[0].size() << std::endl;
+		out << syn0_train_->syn0_.size() << " " << syn0_train_->syn0_[0].size() << std::endl;
 
 		std::vector<Word *> words = words_;
 		std::sort(words.begin(), words.end(), [](Word *w1, Word *w2) { return w1->count_ > w2->count_; });
 
 		for (auto w: words) {
 			out << Cvt<String>::to_utf8(w->text_);
-			for (auto i: syn0_[w->index_]) out << " " << i;
+			for (auto i: syn0_train_->syn0_[w->index_]) out << " " << i;
 			out << std::endl;
 		}
 
@@ -319,22 +312,26 @@ struct Word2Vec
 		const word2vec::Dict *dict = word2vec::GetDict(s.data());
 		size_t n_words = dict->words()->Length();
 
-		syn0_.clear(); vocab_.clear(); words_.clear();
-		syn0_.resize(n_words);
+		decltype(syn0_train_->syn0_) syn0_tmp;
+		syn0_tmp.clear(); vocab_.clear(); words_.clear();
+		syn0_tmp.resize(n_words);
 
 		for (int i=0; i<n_words; ++i) {
 			const auto *word = dict->words()->Get(i);
 			auto name = Cvt<String>::from_utf8(word->name()->c_str());
 			auto p = vocab_.emplace(name, std::make_shared<Word>(i, name, 0));
 			words_.push_back(p.first->second.get());
-			syn0_[i] = std::vector<float>{word->feature()->begin(), word->feature()->end()};
+			syn0_tmp[i] = std::vector<float>{word->feature()->begin(), word->feature()->end()};
 		}
 
-		layer1_size_ = syn0_[0].size();
+		layer1_size_ = syn0_tmp[0].size();
 		printf("%d words loaded\n", n_words);
 
-		syn0norm_ = syn0_;
+		syn0norm_ = syn0_tmp;
 		for (auto& v: syn0norm_) v::unit(v);
+
+		syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size_, n_words);
+		syn0_train_->syn0_ = std::move(syn0_tmp);
 
 		return 0;
 	}
@@ -348,8 +345,9 @@ struct Word2Vec
 		std::istringstream iss(line);
 		iss >> n_words >> layer1_size;
 
-		syn0_.clear(); vocab_.clear(); words_.clear();
-		syn0_.resize(n_words);
+		decltype(syn0_train_->syn0_) syn0_tmp;
+		syn0_tmp.clear(); vocab_.clear(); words_.clear();
+		syn0_tmp.resize(n_words);
 		for (int i=0; i<n_words; ++i) {
 			if (! std::getline(in, line)) return -1;
 
@@ -359,17 +357,20 @@ struct Word2Vec
 
 			auto p = vocab_.emplace(Cvt<String>::from_utf8(text), WordP(new Word{i, Cvt<String>::from_utf8(text), 0}));
 			words_.push_back(p.first->second.get());
-			syn0_[i].resize(layer1_size);
+			syn0_tmp[i].resize(layer1_size);
 			for(int j=0; j<layer1_size; ++j) {
-				iss >> syn0_[i][j];
+				iss >> syn0_tmp[i][j];
 			}
 		}
 
 		layer1_size_ = layer1_size;
 		printf("%d words loaded\n", n_words);
 
-		syn0norm_ = syn0_;
+		syn0norm_ = syn0_tmp;
 		for (auto& v: syn0norm_) v::unit(v);
+
+		syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size_, n_words);
+		syn0_train_->syn0_ = std::move(syn0_tmp);
 
 		return 0;
 	}
@@ -378,7 +379,7 @@ struct Word2Vec
 		static Vector nil;
 		auto it = vocab_.find(w);
 		if (it == vocab_.end()) return nil;
-		return syn0_[it->second->index_];
+		return syn0_train_->syn0_[it->second->index_];
 	}
 
 	size_t word_vector_size() const { return layer1_size_; }
@@ -448,19 +449,20 @@ private:
 		const int sentence_length = sentence.words_.size();
 		const int reduced_window = rand() % window_;
 		for (int i = 0; i < sentence_length; ++i) { // loop: tokens in corpus
-			const Word& current_word = *sentence.words_[i];
+			const Word* current_word = sentence.words_[i];
 
 			int j = std::max(0, i - window_ + reduced_window);
 			const int k = std::min(sentence_length, i + window_ + 1 - reduced_window);
 			for (; j < k; ++j) { // loop: window
 				if (j == i) continue;
 				const Word *word = sentence.words_[j]; // predicted-word index
-				auto& l1 = syn0_[current_word.index_];
+				auto& l1 = syn0_train_->syn0_[current_word->index_];
 
 				// udate parameters by Hierarchical Softmax
 				std::fill(grad_syn0.begin(), grad_syn0.end(), 0);
 				syn1_train_->train_syn1(word, l1, alpha, grad_syn0); // update syn1_
-				v::saxpy(l1, 1.0, grad_syn0); // syn0_[current_word->index] += grad_syn0;
+				//v::saxpy(l1, 1.0, grad_syn0); // syn0_[current_word->index] += grad_syn0;
+				syn0_train_->train_syn0(current_word, grad_syn0, alpha);
 			} // end loop: window
 			++count;
 		} // end loop: tokens in corpus
@@ -471,7 +473,7 @@ private:
 	float similarity(const String& w1, const String& w2) const {
 		auto it1 = vocab_.find(w1), it2 = vocab_.find(w2);
 		if (it1 != vocab_.end() && it2 != vocab_.end())
-			return v::dot(syn0_[it1->second->index_], syn0_[it2->second->index_]);
+			return v::dot(syn0_train_->syn0_[it1->second->index_], syn0_train_->syn0_[it2->second->index_]);
 		return 0;
 	}
 
