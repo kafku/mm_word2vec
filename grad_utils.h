@@ -16,10 +16,10 @@ namespace gu {
 		using MatrixXT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
 
 		// cos(y, Mx)
-		static T call(const Vector& y, const Vector& x, const LightMatrix& M) {
-			Eigen::Map<const VectorXT>(y.data(), y.size());
-			Eigen::Map<const VectorXT>(x.data(), x.size());
-			Eigen::Map<const MatrixXT>(M.data(), M.n_rows, M.n_cols);
+		static T call(const Vector& y_, const Vector& x_, const LightMatrix& M_) {
+			const auto& x = Eigen::Map<const VectorXT>(y_.data(), y_.size());
+			const auto& y = Eigen::Map<const VectorXT>(x_.data(), x_.size());
+			const auto& M = Eigen::Map<const MatrixXT>(M_.data(), M_.n_rows, M_.n_cols);
 
 			const MatrixXT Mx = M * x;
 			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
@@ -29,11 +29,11 @@ namespace gu {
 		}
 
 		// grad += alpha * d cos(Mx, y) / d x
-		static void grad_wrt_vec(const T alpha, const Vector& x, const Vector& y, const LightMatrix& M, Vector& grad) {
-			Eigen::Map<const VectorXT>(y.data(), y.size());
-			Eigen::Map<const VectorXT>(x.data(), x.size());
-			Eigen::Map<const MatrixXT>(M.data(), M.n_rows, M.n_cols);
-			Eigen::Map<VectorXT>(grad.data(), grad.size());
+		static void grad_wrt_vec(const T alpha, const Vector& x_, const Vector& y_, const LightMatrix& M_, Vector& grad_) {
+			const auto& y = Eigen::Map<const VectorXT>(y_.data(), y_.size());
+			const auto& x = Eigen::Map<const VectorXT>(x_.data(), x_.size());
+			const auto& M = Eigen::Map<const MatrixXT>(M_.data(), M_.n_rows, M_.n_cols);
+			auto& grad = Eigen::Map<VectorXT>(grad_.data(), grad_.size());
 
 			const MatrixXT Mx = M * x;
 			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
@@ -46,11 +46,11 @@ namespace gu {
 		}
 
 		// grad += alpha * d cos(y, Mx) / d M
-		static void grad_wrt_mat(const T alpha, const Vector& x, const Vector& y, const LightMatrix& M, LightMatrix& grad) {
-			Eigen::Map<const Eigen::VectorX<T>>(y.data(), y.size());
-			Eigen::Map<const Eigen::VectorX<T>>(x.data(), x.size());
-			Eigen::Map<const Eigen::MatrixX<T>>(M.data(), M.n_rows, M.n_cols);
-			Eigen::Map<Eigen::MatrixX<T>>(grad.data(), grad.n_rows, grad.n_cols);
+		static void grad_wrt_mat(const T alpha, const Vector& x_, const Vector& y_, const LightMatrix& M_, LightMatrix& grad_) {
+			const auto& y = Eigen::Map<const Eigen::VectorX<T>>(y_.data(), y_.size());
+			const auto& x = Eigen::Map<const Eigen::VectorX<T>>(x_.data(), x_.size());
+			const auto& M = Eigen::Map<const Eigen::MatrixX<T>>(M_.data(), M_.n_rows, M_.n_cols);
+			auto& grad = Eigen::Map<Eigen::MatrixX<T>>(grad_.data(), grad_.n_rows, grad_.n_cols);
 
 			const Eigen::MatrixX<T> Mx = M * x;
 			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
