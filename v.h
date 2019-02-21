@@ -29,13 +29,15 @@ namespace v {
 	}
 
 	// saxpy: x = x + g * y; x = a * x + g * y
-	inline void saxpy(Vector& x, float g, const Vector& y) {
+	template <typename Vector1, typename Vector2>
+	inline void saxpy(Vector1& x, float g, const Vector2& y) {
 
 		int m = x.size(); float *xd = x.data(); const float *yd = y.data();
 		while (--m >= 0) (*xd++) += g * (*yd++);
 	}
 
-	inline void saxpy(float a, Vector& x, float g, const Vector& y) {
+	template <typename Vector1, typename Vector2>
+	inline void saxpy(float a, Vector1& x, float g, const Vector2& y) {
 		int m = x.size(); float *xd = x.data(); const float *yd = y.data();
 		while (--m >= 0) { (*xd) = a * (*xd) + g * (*yd); ++xd; ++yd; }
 	}
