@@ -191,6 +191,7 @@ class MultimodalGD : public Syn0TrainStrategy<Word>
 {
 public:
 	using String = decltype(std::declval<Word>().text_);
+
 	MultimodalGD(const int layer1_size, const int n_words, const int n_negative, const float margin, const uint32_t min_freq=500)
 		: Syn0TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), margin_(margin), min_freq_(min_freq) {}
 
@@ -230,8 +231,8 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 	}
 
 	// initialize linear transformation matrix
-	const auto n_rows = n_words; // FIXME
-	const auto n_cols = multimodal_data[0].size(); // FIXME
+	const auto n_rows = multimodal_data[0].size();
+	const auto n_cols = this->layer1_size_;
 
 	linear_transform_vec.resize(n_words * n_cols);
 	std::random_device seed_gen;
@@ -253,7 +254,7 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	v::saxpy(l1, 1.0, work); // syn0_[current_word->index] += work;
 
 	// do nothing if the word is not in vocab
-	const auto it = vocab2data_idx.find(current_word->text_);
+	auto it = vocab2data_idx.find(current_word->text_);
 	if (it == vocab2data_idx.end())
 		return;
 
@@ -280,11 +281,11 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	// update matrix
 	#pragma omp critical
 	{
+		int n_violate = 0
 		for(const auto neg_idx : neg_indices) {
 			const auto& neg_vec = multimodal_data[neg_idx];
 			const float diff = Func::call(pos_vec, l1, linear_transform) - Func::call(neg_vec, l1, linear_transform);
 			if (margin_ <= diff) continue;
-
 
 			// update gradient for syn0
 			Func::grad_wrt_vec(learning_rate, l1, pos_vec, linear_transform, grad_syn0);
@@ -293,8 +294,12 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 			// update gradient for linear_transform
 			Func::grad_wrt_mat(learning_rate, l1, pos_vec, linear_transform, grad_lin_trans);
 			Func::grad_wrt_mat(-learning_rate, l1, neg_vec, linear_transform, grad_lin_trans);
+
+			++n_update;
 		}
 	}
+
+	if (n_violate == 0) return; // do nothing when no violations
 
 	v::saxpy(l1, 1.0, grad_syn0); // update syn0_
 	v::saxpy(linear_transform, 1.0, grad_lin_trans); // update linear_transform
