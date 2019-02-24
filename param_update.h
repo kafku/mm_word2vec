@@ -192,14 +192,15 @@ class MultimodalGD : public Syn0TrainStrategy<Word>
 public:
 	using String = decltype(std::declval<Word>().text_);
 
-	MultimodalGD(const int layer1_size, const int n_words, const int n_negative, const float margin, const uint32_t min_freq=500)
-		: Syn0TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), margin_(margin), min_freq_(min_freq) {}
+	MultimodalGD(const int layer1_size, const int n_words, const int n_negative, const float margin, const float reg_param, const uint32_t min_freq=500)
+		: Syn0TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), margin_(margin), reg_param_(reg_param), min_freq_(min_freq) {}
 
 	virtual void load(const std::string& file);
 	virtual void train_syn0(const Word *current_word, const Vector& work, const float learning_rate) override;
 
 private:
 	const float margin_;
+	const float reg_param_; // regularization parameter
 	const int n_negative_;
 	const uint32_t min_freq_;
 	v::LightMatrix linear_transform;
@@ -278,11 +279,11 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	v::LightMatrix grad_lin_trans(linear_transform.n_rows, linear_transform.n_cols,
 			grad_lin_trans_vec.data(), grad_lin_trans_vec.data() + grad_lin_trans_vec.size());
 
+	int n_violate = 0;
 	// update matrix
 	#pragma omp critical
 	{
-		int n_violate = 0
-		for(const auto neg_idx : neg_indices) {
+		for (const auto neg_idx : neg_indices) {
 			const auto& neg_vec = multimodal_data[neg_idx];
 			const float diff = Func::call(pos_vec, l1, linear_transform) - Func::call(neg_vec, l1, linear_transform);
 			if (margin_ <= diff) continue;
@@ -295,12 +296,12 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 			Func::grad_wrt_mat(learning_rate, l1, pos_vec, linear_transform, grad_lin_trans);
 			Func::grad_wrt_mat(-learning_rate, l1, neg_vec, linear_transform, grad_lin_trans);
 
-			++n_update;
+			++n_violate;
 		}
 	}
-
 	if (n_violate == 0) return; // do nothing when no violations
 
 	v::saxpy(l1, 1.0, grad_syn0); // update syn0_
 	v::saxpy(linear_transform, 1.0, grad_lin_trans); // update linear_transform
+	v::saxpy(linear_transform, -learning_rate * reg_param_, linear_transform); // regularization
 }
