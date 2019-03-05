@@ -4,12 +4,12 @@ CXX=g++
 OPTI = -Ofast
 WARN = -Wall
 OMP = -fopenmp
-DBG = #-g
+DBG = -g
 INCLUDE=-I./eigen-git-mirror
 CXX_FLAGS=$(DBG) $(WARN) $(OPTI) $(OMP) -std=c++11 -march=native -funroll-loops -ftemplate-depth=1010
 CXX_FLAGS += -DEIGEN_DEFAULT_TO_ROW_MAJOR
 CXX_FLAGS += -DEIGEN_USE_BLAS
-LD_FLAGS=-lpthread -lboost_program_options -lopenblas
+LD_FLAGS=-lpthread -lboost_program_options -lopenblas -lglog
 
 HEADERS=$(ls *.h)
 

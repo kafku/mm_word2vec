@@ -7,6 +7,7 @@
 #include <string>
 #include <initializer_list>
 #include <boost/program_options.hpp>
+#include <glog/logging.h>
 
 int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_vocab = 30000) {
 	std::ifstream in(questions);
@@ -52,6 +53,10 @@ int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_v
 
 int main(int argc, const char *argv[])
 {
+	// seg glog
+	google::InitGoogleLogging(argv[0]);
+	google::InstallFailureSignalHandler();
+
 	// parse options
 	namespace po = boost::program_options;
 	po::options_description description("Allowed options");
