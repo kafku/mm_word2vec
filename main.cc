@@ -2,6 +2,7 @@
 // g++-4.8 -ow2v -fopenmp -std=c++0x -Ofast -march=native -funroll-loops  main.cc  -lpthread
 
 #include "word2vec.h"
+#include "grad_utils.h"
 #include <iostream>
 #include <string>
 #include <initializer_list>
@@ -69,6 +70,7 @@ int main(int argc, const char *argv[])
 		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text")
 		("iteration,i", po::value<int>()->default_value(5), "The number of iterations")
 		("method,M", po::value<std::string>()->default_value("HS"), "Methos: HierarchicalSoftmax(HS)/NegativeSampling(NS)")
+		("multimodal-input,I", po::value<std::string>()->default_value(""), "Path to multimodal feature file")
 		("input_path", po::value<std::string>(), "Path to input file");
 
 	po::positional_options_description pos_description;
@@ -98,6 +100,7 @@ int main(int argc, const char *argv[])
 	const auto file_format = vm["format"].as<std::string>();
 	const auto n_iterations = vm["iteration"].as<int>();
 	const auto train_method = vm["method"].as<std::string>();
+	const auto multimodal_path = vm["multimodal-input"].as<std::string>();
 
 	// simple check for options
 	if ( mode != "train" && mode != "test")
@@ -193,7 +196,14 @@ int main(int argc, const char *argv[])
 			return -1;
 		}
 
-		model.syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size, n_words);
+		if (multimodal_path.size() == 0) {
+			model.syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size, n_words);
+		}
+		else {
+			auto MMGD_strategy = std::make_shared<MultimodalGD<Word, gu::CosSim<float>>>(layer1_size, n_words, 5, 0.5, 0.0001, 50);
+			MMGD_strategy->load(multimodal_path);
+			model.syn0_train_ = MMGD_strategy;
+		}
 
 		cstart = cend;
 		model.train(sentences, n_workers);
