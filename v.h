@@ -96,12 +96,13 @@ namespace v {
 		template <typename... Arg> LightMatrix(const int _n_rows, const int _n_cols, Arg&& ... arg)
 			: LightVector(std::forward<Arg>(arg) ...), n_rows(_n_rows), n_cols(_n_cols) {}
 
+		LightMatrix() = default;
 		LightVector row(size_t row_idx) const {
 			float* const row_start = first + row_idx * n_cols;
 			float* const row_end = row_start + n_cols;
 			return std::move(LightVector(row_start, row_end));
 		}
-		const int n_rows, n_cols;
+		int n_rows, n_cols;
 	};
 
 	// x^T A y
