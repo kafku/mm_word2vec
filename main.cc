@@ -112,9 +112,10 @@ int main(int argc, const char *argv[])
 	std::cout << "Input file: " << input_path << std::endl;
 
 	// initalize model
-	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha, train_method, n_iterations);
+	Word2Vec<std::string> model(dim, window, sample, min_count, alpha, min_alpha, n_iterations);
 	using Sentence = Word2Vec<std::string>::Sentence;
 	using SentenceP = Word2Vec<std::string>::SentenceP;
+	using Word = Word2Vec<std::string>::Word;
 
 	// model.phrase_ = true;
 
@@ -169,6 +170,30 @@ int main(int argc, const char *argv[])
 		model.build_vocab(sentences);
 		auto cend = std::chrono::high_resolution_clock::now();
 		printf("load vocab: %.4f seconds\n", std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count() / 1000000.0);
+
+		// set training strategies
+		const auto n_words = model.words_.size();
+		const auto layer1_size = model.layer1_size_;
+		if (train_method == "HS") { // Hierarchical Softmax
+			std::cout << "Training method: Hierarchical Softmax" << std::endl;
+			std::shared_ptr<HierarchicalSoftmax<Word>> HS_strategy = std::make_shared<HierarchicalSoftmax<Word>>(layer1_size, n_words);
+			HS_strategy->build_tree(model.words_);
+			model.syn1_train_ = HS_strategy;
+		}
+		else if (train_method == "NS") { // Negative Sampling
+			std::cout << "Training method: Negative Sampling" << std::endl;
+			std::cout << "  # of negative samples : " << negative << std::endl;
+			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size, n_words, negative);
+			NS_strategy->update_distribution(model.words_);
+			model.syn1_train_ = NS_strategy;
+		}
+		else {
+			// NOTE: invalid option
+			// TODO: show error message
+			return -1;
+		}
+
+		model.syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size, n_words);
 
 		cstart = cend;
 		model.train(sentences, n_workers);

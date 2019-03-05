@@ -62,8 +62,10 @@ struct Word2Vec
 	};
 	typedef std::shared_ptr<Sentence> SentenceP;
 
+	// training strategy
 	std::shared_ptr<Syn0TrainStrategy<Word>> syn0_train_;
 	std::vector<Vector> syn0norm_;
+	std::shared_ptr<Syn1TrainStrategy<Word>> syn1_train_;
 
 	std::unordered_map<String, WordP> vocab_;
 	std::vector<Word *> words_;
@@ -74,7 +76,6 @@ struct Word2Vec
 	const float sample_; // subsampling
 
 	const int min_count_; // minimum frequency of word
-	const int negative_; // # of negative samples
 
 	const float alpha_, min_alpha_; // learning rate
 
@@ -84,9 +85,9 @@ struct Word2Vec
 	const int iter_;
 
 
-	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, int negative = 5,
-			float alpha = 0.025, float min_alpha = 0.0001, const std::string& train_method = "HS", const int iter = 5)
-		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count), syn1_train_method_(train_method), negative_(negative),
+	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5,
+			float alpha = 0.025, float min_alpha = 0.0001, const int iter = 5)
+		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count),
 		alpha_(alpha), min_alpha_(min_alpha), iter_(iter), phrase_(false), phrase_threshold_(100) {}
 
 	bool has(const String& w) const { return vocab_.find(w) != vocab_.end(); }
@@ -181,28 +182,6 @@ struct Word2Vec
 		for (auto& w: words_) w->index_ = index++;
 
 		printf("collected %lu distinct words with min_count=%d\n", vocab_.size(), min_count_);
-
-		n_words = words_.size();
-		if (syn1_train_method_ == "HS") { // Hierarchical Softmax
-			std::cout << "Training method: Hierarchical Softmax" << std::endl;
-			std::shared_ptr<HierarchicalSoftmax<Word>> HS_strategy = std::make_shared<HierarchicalSoftmax<Word>>(layer1_size_, n_words);
-			HS_strategy->build_tree(words_);
-			syn1_train_ = HS_strategy;
-		}
-		else if (syn1_train_method_ == "NS") { // Negative Sampling
-			std::cout << "Training method: Negative Sampling" << std::endl;
-			std::cout << "  # of negative samples : " << negative_ << std::endl;
-			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size_, n_words, negative_);
-			NS_strategy->update_distribution(words_);
-			syn1_train_ = NS_strategy;
-		}
-		else {
-			// NOTE: invalid option
-			// TODO: show error message
-			return -1;
-		}
-
-		syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size_, n_words);
 
 		return 0;
 	}
@@ -477,8 +456,5 @@ private:
 		return 0;
 	}
 
-	// training strategy
-	std::string syn1_train_method_; // "NS" : negative sampling, "HS" : hierarchical softmax
-	std::shared_ptr<Syn1TrainStrategy<Word>> syn1_train_;
 };
 
