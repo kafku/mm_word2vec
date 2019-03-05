@@ -243,7 +243,7 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 	const auto n_rows = multimodal_data[0].size();
 	const auto n_cols = this->layer1_size_;
 
-	linear_transform_vec.resize(n_words * n_cols);
+	linear_transform_vec.resize(n_rows * n_cols);
 	std::random_device seed_gen;
 	std::default_random_engine eng(seed_gen());
 	std::uniform_real_distribution<float> rng(0.0, 1.0); // FIXME: is this OK?
@@ -253,7 +253,8 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 
 	linear_transform = v::LightMatrix(n_rows, n_cols,
 			linear_transform_vec.data(), linear_transform_vec.data() + linear_transform_vec.size());
-  std::cout << "  Constructed " << n_rows << " x " << n_cols << " matrix" << std::endl;
+  std::cout << "  Constructed " << linear_transform.n_rows << " x "
+    << linear_transform.n_cols << " matrix" << std::endl;
 
 	distribution = std::uniform_int_distribution<size_t>(1, n_words - 1);
 }
