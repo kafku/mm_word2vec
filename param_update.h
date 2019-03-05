@@ -193,7 +193,13 @@ public:
 	using String = decltype(std::declval<Word>().text_);
 
 	MultimodalGD(const int layer1_size, const int n_words, const int n_negative, const float margin, const float reg_param, const uint32_t min_freq=500)
-		: Syn0TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), margin_(margin), reg_param_(reg_param), min_freq_(min_freq) {}
+		: Syn0TrainStrategy<Word>(layer1_size, n_words), n_negative_(n_negative), margin_(margin), reg_param_(reg_param), min_freq_(min_freq)
+  {
+    std::cout << "  margin: " << margin << std::endl;
+    std::cout << "  regularization param: " << reg_param << std::endl;
+    std::cout << "  negative samples: " << n_negative << std::endl;
+    std::cout << "  minimum freq.: " << min_freq << std::endl;
+  }
 
 	virtual void load(const std::string& file);
 	virtual void train_syn0(const Word *current_word, const Vector& work, const float learning_rate) override;
@@ -212,6 +218,7 @@ private:
 
 template <typename Word, typename Func>
 void MultimodalGD<Word, Func>::load(const std::string& file) {
+  std::cout << "Loading multimodal features from " << file << std::endl;
 	// load serialized data
 	std::ifstream in(file, std::ifstream::binary);
 	std::stringstream ss;
@@ -230,6 +237,7 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 		auto p = vocab2data_idx.emplace(name, i);
 		multimodal_data[i] = std::vector<float>{word->feature()->begin(), word->feature()->end()};
 	}
+  std::cout << "  Loaded " << vocab2data_idx.size() << " multimodal features" << std::endl;
 
 	// initialize linear transformation matrix
 	const auto n_rows = multimodal_data[0].size();
@@ -245,6 +253,7 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 
 	linear_transform = v::LightMatrix(n_rows, n_cols,
 			linear_transform_vec.data(), linear_transform_vec.data() + linear_transform_vec.size());
+  std::cout << "  Constructed " << n_rows << " x " << n_cols << " matrix" << std::endl;
 
 	distribution = std::uniform_int_distribution<size_t>(1, n_words - 1);
 }
@@ -269,7 +278,7 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	const auto& pos_vec = multimodal_data[idx];
 
 	// negative sampling
-	const std::vector<size_t> neg_indices(n_negative_);
+	std::vector<size_t> neg_indices(n_negative_);
 	for (auto& x : neg_indices) {
 		x = (idx + distribution(engine)) % multimodal_data.size();
 	}
