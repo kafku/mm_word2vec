@@ -17,15 +17,15 @@ namespace gu {
 
 		// cos(y, Mx)
 		static T call(const Vector& y_, const Vector& x_, const LightMatrix& M_) {
-			const auto& x = Eigen::Map<const VectorXT>(y_.data(), y_.size());
-			const auto& y = Eigen::Map<const VectorXT>(x_.data(), x_.size());
+			const auto& y = Eigen::Map<const VectorXT>(y_.data(), y_.size());
+			const auto& x = Eigen::Map<const VectorXT>(x_.data(), x_.size());
 			const auto& M = Eigen::Map<const MatrixXT>(M_.data(), M_.n_rows, M_.n_cols);
 
 			const MatrixXT Mx = M * x;
 			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
 			const T norm_y_inv = 1.0 / y.squaredNorm();
 
-			return (y.transpose() * Mx) * norm_Mx_inv * norm_y_inv;
+			return (y.transpose() * Mx)(0, 0) * norm_Mx_inv * norm_y_inv;
 		}
 
 		// grad += alpha * d cos(Mx, y) / d x
@@ -33,13 +33,13 @@ namespace gu {
 			const auto& y = Eigen::Map<const VectorXT>(y_.data(), y_.size());
 			const auto& x = Eigen::Map<const VectorXT>(x_.data(), x_.size());
 			const auto& M = Eigen::Map<const MatrixXT>(M_.data(), M_.n_rows, M_.n_cols);
-			auto& grad = Eigen::Map<VectorXT>(grad_.data(), grad_.size());
+			auto grad = Eigen::Map<VectorXT>(grad_.data(), grad_.size());
 
 			const MatrixXT Mx = M * x;
 			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
 			const T norm_y_inv = 1.0 / y.squaredNorm();
 			const T a = norm_Mx_inv * norm_y_inv; // 1.0 / (norm(x) * norm(y))
-			const T b = (y.transpose() * Mx) * std::pow(norm_Mx_inv, 3) * norm_y_inv; // dot(Mx, y) / (norm(Mx)^3 ^ norm(y))
+			const T b = (y.transpose() * Mx)(0, 0) * std::pow(norm_Mx_inv, 3) * norm_y_inv; // dot(Mx, y) / (norm(Mx)^3 ^ norm(y))
 
 			// alpha * (M^T y / (norm(Mx) * norm(y)) - dot(x, y) M^T Mx / (norm(Mx)^3 * norm(y)))
 			grad += alpha * M.transpose() * (y * a - Mx * b);
@@ -50,16 +50,16 @@ namespace gu {
 			const auto& y = Eigen::Map<const Eigen::VectorX<T>>(y_.data(), y_.size());
 			const auto& x = Eigen::Map<const Eigen::VectorX<T>>(x_.data(), x_.size());
 			const auto& M = Eigen::Map<const Eigen::MatrixX<T>>(M_.data(), M_.n_rows, M_.n_cols);
-			auto& grad = Eigen::Map<Eigen::MatrixX<T>>(grad_.data(), grad_.n_rows, grad_.n_cols);
+			auto grad = Eigen::Map<Eigen::MatrixX<T>>(grad_.data(), grad_.n_rows, grad_.n_cols);
 
 			const Eigen::MatrixX<T> Mx = M * x;
 			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
 			const T norm_y_inv = 1.0 / y.squaredNorm();
 			const T a = norm_Mx_inv * norm_y_inv; // 1.0 / (norm(Mx) * norm(y))
-			const T b = (y.transpose() * Mx) * std::pow(norm_Mx_inv, 3) * norm_y_inv; // y^T Mx / (norm(Mx)^3 * norm(y))
+			const T b = (y.transpose() * Mx)(0, 0) * std::pow(norm_Mx_inv, 3) * norm_y_inv; // y^T Mx / (norm(Mx)^3 * norm(y))
 
 			// grad += alpha * (y x^T / (norm(Mx) * norm(y)) - y^T Mx Mxx^T / (norm(Mx)^3 * norm(y)))
-			grad += alpha * (y * a - Mx * b) * x.transpose();
+			grad += alpha * (y * a - Mx * b) * x.transpose(); // FIXME
 		}
 	};
 } // end namespace: gu
