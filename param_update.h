@@ -204,7 +204,7 @@ public:
   }
 	~MultimodalGD() {
 		if (!file_name.empty())
-		save_lt(file_name);
+			save_lt(file_name);
 	}
 
 	virtual void load(const std::string& file);
@@ -275,20 +275,38 @@ void MultimodalGD<Word, Func>::save_lt(const std::string& file) {
 	std::cout << "saving linear transformation matrix to " << file << std::endl;
 	// c.f. https://support.hdfgroup.org/HDF5/doc/cpplus_RM/create_8cpp-example.html
 	using namespace H5;
-	H5File h5_file(file, H5F_ACC_TRUNC);
+	try {
+		H5File h5_file(file, H5F_ACC_TRUNC);
 
-	hsize_t dimsf[2];
-	dimsf[0] = linear_transform.n_rows;
-	dimsf[1] = linear_transform.n_cols;
-	DataSpace dataspace(2, dimsf);
+		hsize_t dimsf[2];
+		dimsf[0] = linear_transform.n_rows;
+		dimsf[1] = linear_transform.n_cols;
+		DataSpace dataspace(2, dimsf);
 
-	// Define datatype for the data in the file.
-	// We will store little endian INT numbers.
-	IntType datatype(PredType::NATIVE_FLOAT);
-	datatype.setOrder(H5T_ORDER_LE);
+		// Define datatype for the data in the file.
+		// We will store little endian INT numbers.
+		IntType datatype(PredType::NATIVE_FLOAT);
+		datatype.setOrder(H5T_ORDER_LE);
 
-	DataSet dataset = h5_file.createDataSet("linear_transform", datatype, dataspace);
-	dataset.write(linear_transform_vec.data(), PredType::NATIVE_FLOAT);  //NOTE: linear_transform is row-major matrix
+		DataSet dataset = h5_file.createDataSet("linear_transform", datatype, dataspace);
+		dataset.write(linear_transform_vec.data(), PredType::NATIVE_FLOAT);  //NOTE: linear_transform is row-major matrix
+	}
+	catch(FileIException error)
+	{
+		error.printError();
+	}
+	catch(DataSetIException error)
+	{
+		error.printError();
+	}
+	catch(DataSpaceIException error)
+	{
+		error.printError();
+	}
+	catch(DataTypeIException error)
+	{
+		error.printError();
+	}
 }
 
 
