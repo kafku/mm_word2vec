@@ -316,14 +316,15 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	auto& l1 = this->syn0_[current_word->index_];
 	v::saxpy(l1, 1.0, work); // syn0_[current_word->index] += work;
 
+	// skip less frequent words
+	if (current_word->count_ < min_freq_)
+		return;
+
 	// do nothing if the word is not in vocab
 	auto it = vocab2data_idx.find(current_word->text_);
 	if (it == vocab2data_idx.end())
 		return;
 
-	// skip less frequent words
-	if (current_word->count_ < min_freq_)
-		return;
 
 	std::random_device seed_gen;
 	std::default_random_engine engine(seed_gen());
