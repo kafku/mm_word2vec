@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <random>
 #include <boost/utility.hpp>
+#include <H5Cpp.h>
 #include "math_utils.h"
 #include "huffman_tree.h"
 #include "v.h"
@@ -202,6 +203,7 @@ public:
   }
 
 	virtual void load(const std::string& file);
+	virtual void save_lt(const std::string& file);
 	virtual void train_syn0(const Word *current_word, const Vector& work, const float learning_rate) override;
 
 private:
@@ -258,6 +260,30 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 
 	distribution = std::uniform_int_distribution<size_t>(1, n_words - 1);
 }
+
+
+
+template <typename Word, typename Func>
+void MultimodalGD<Word, Func>::save_lt(const std::string& file) {
+	// c.f. https://support.hdfgroup.org/HDF5/doc/cpplus_RM/create_8cpp-example.html
+	using namespace H5;
+	H5File h5_file(file, H5F_ACC_TRUNC);
+
+	hsize_t dimsf[2];
+	dimsf[0] = linear_transform.n_rows;
+	dimsf[1] = linear_transform.n_cols;
+	DataSpace dataspace(2, dimsf);
+
+	// Define datatype for the data in the file.
+	// We will store little endian INT numbers.
+	IntType datatype(PredType::NATIVE_FLOAT); // FIXME: float
+	datatype.setOrder(H5T_ORDER_LE);
+
+	DataSet dataset = h5_file.createDataSet("linear_transform", datatype, dataspace);
+	dataset.write(linear_transform_vec.data(), PredType::NATIVE_FLOAT);  //NOTE: linear_transform is row-major matrix
+}
+
+
 
 template<typename Word, typename Func>
 void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector& work, const float learning_rate) {
