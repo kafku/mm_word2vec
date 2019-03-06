@@ -29,7 +29,7 @@ struct Syn1TrainStrategy : private boost::noncopyable
 		syn1_.resize(n_words);
 		for (auto& s: syn1_) s.resize(layer1_size);
 	}
-	~Syn1TrainStrategy() {}
+	virtual ~Syn1TrainStrategy() {}
 
 	virtual void train_syn1(const Word *current_word, const Vector& l1,  const float learning_rate, Vector& work) = 0;
 
@@ -157,7 +157,7 @@ struct Syn0TrainStrategy : private boost::noncopyable
 	}
 	Syn0TrainStrategy(std::vector<Vector>&& src)
 		: layer1_size_(src[0].size()), n_words_(src.size()), syn0_(src) {}
-	~Syn0TrainStrategy() {}
+	virtual ~Syn0TrainStrategy() {}
 
 	virtual void train_syn0(const Word *current_word, const Vector& work, const float learning_rate) = 0;
 
@@ -200,13 +200,20 @@ public:
     std::cout << "  regularization param: " << reg_param << std::endl;
     std::cout << "  negative samples: " << n_negative << std::endl;
     std::cout << "  minimum freq.: " << min_freq << std::endl;
+		file_name.clear();
   }
+	~MultimodalGD() {
+		if (!file_name.empty())
+		save_lt(file_name);
+	}
 
 	virtual void load(const std::string& file);
 	virtual void save_lt(const std::string& file);
+	virtual void save_lt_on_exit(const std::string& file) { file_name = file; }
 	virtual void train_syn0(const Word *current_word, const Vector& work, const float learning_rate) override;
 
 private:
+	std::string file_name;
 	const float margin_;
 	const float reg_param_; // regularization parameter
 	const int n_negative_;
@@ -265,6 +272,7 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 
 template <typename Word, typename Func>
 void MultimodalGD<Word, Func>::save_lt(const std::string& file) {
+	std::cout << "saving linear transformation matrix to " << file << std::endl;
 	// c.f. https://support.hdfgroup.org/HDF5/doc/cpplus_RM/create_8cpp-example.html
 	using namespace H5;
 	H5File h5_file(file, H5F_ACC_TRUNC);
@@ -276,7 +284,7 @@ void MultimodalGD<Word, Func>::save_lt(const std::string& file) {
 
 	// Define datatype for the data in the file.
 	// We will store little endian INT numbers.
-	IntType datatype(PredType::NATIVE_FLOAT); // FIXME: float
+	IntType datatype(PredType::NATIVE_FLOAT);
 	datatype.setOrder(H5T_ORDER_LE);
 
 	DataSet dataset = h5_file.createDataSet("linear_transform", datatype, dataspace);
