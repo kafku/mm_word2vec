@@ -289,29 +289,36 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	v::LightMatrix grad_lin_trans(linear_transform.n_rows, linear_transform.n_cols,
 			grad_lin_trans_vec.data(), grad_lin_trans_vec.data() + grad_lin_trans_vec.size());
 
+	// copy current parameters
+	const auto l1_copy = l1;
+	auto lt_vec_copy = linear_transform_vec;
+	v::LightMatrix lt_copy(linear_transform.n_rows, linear_transform.n_cols,
+			lt_vec_copy.data(), lt_vec_copy.data() + lt_vec_copy.size());
+
+	// calculate gradient
 	int n_violate = 0;
-	// update matrix
-	#pragma omp critical
-	{
-		for (const auto neg_idx : neg_indices) {
-			const auto& neg_vec = multimodal_data[neg_idx];
-			const float diff = Func::call(pos_vec, l1, linear_transform) - Func::call(neg_vec, l1, linear_transform);
-			if (margin_ <= diff) continue;
+	for (const auto neg_idx : neg_indices) {
+		const auto& neg_vec = multimodal_data[neg_idx];
+		const float diff = Func::call(pos_vec, l1_copy, lt_copy) - Func::call(neg_vec, l1_copy, lt_copy);
+		if (margin_ <= diff) continue;
 
-			// update gradient for syn0
-			Func::grad_wrt_vec(learning_rate, l1, pos_vec, linear_transform, grad_syn0);
-			Func::grad_wrt_vec(-learning_rate, l1, neg_vec, linear_transform, grad_syn0);
+		// update gradient for syn0
+		Func::grad_wrt_vec(learning_rate, l1_copy, pos_vec, lt_copy, grad_syn0);
+		Func::grad_wrt_vec(-learning_rate, l1_copy, neg_vec, lt_copy, grad_syn0);
 
-			// update gradient for linear_transform
-			Func::grad_wrt_mat(learning_rate, l1, pos_vec, linear_transform, grad_lin_trans);
-			Func::grad_wrt_mat(-learning_rate, l1, neg_vec, linear_transform, grad_lin_trans);
+		// update gradient for linear_transform
+		Func::grad_wrt_mat(learning_rate, l1_copy, pos_vec, lt_copy, grad_lin_trans);
+		Func::grad_wrt_mat(-learning_rate, l1_copy, neg_vec, lt_copy, grad_lin_trans);
 
-			++n_violate;
-		}
+		++n_violate;
 	}
 	if (n_violate == 0) return; // do nothing when no violations
 
 	v::saxpy(l1, 1.0, grad_syn0); // update syn0_
-	v::saxpy(linear_transform, 1.0, grad_lin_trans); // update linear_transform
-	v::saxpy(linear_transform, -learning_rate * reg_param_, linear_transform); // regularization
+	#pragma omp critical
+	{
+		// update matrix
+		v::saxpy(linear_transform, -1.0, grad_lin_trans); // update linear_transform
+		v::saxpy(linear_transform, -learning_rate * reg_param_, lt_copy); // regularization
+	}
 }
