@@ -22,8 +22,8 @@ namespace gu {
 			const Eigen::Map<const MatrixXT> M(M_.data(), M_.n_rows, M_.n_cols);
 
 			const MatrixXT Mx = M * x;
-			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
-			const T norm_y_inv = 1.0 / y.squaredNorm();
+			const T norm_Mx_inv = 1.0 / Mx.norm();
+			const T norm_y_inv = 1.0 / y.norm();
 
 			return (y.transpose() * Mx)(0, 0) * norm_Mx_inv * norm_y_inv;
 		}
@@ -36,8 +36,8 @@ namespace gu {
 			Eigen::Map<VectorXT> grad(grad_.data(), grad_.size());
 
 			const MatrixXT Mx = M * x;
-			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
-			const T norm_y_inv = 1.0 / y.squaredNorm();
+			const T norm_Mx_inv = 1.0 / Mx.norm();
+			const T norm_y_inv = 1.0 / y.norm();
 			const T a = norm_Mx_inv * norm_y_inv; // 1.0 / (norm(x) * norm(y))
 			const T b = (y.transpose() * Mx)(0, 0) * std::pow(norm_Mx_inv, 3) * norm_y_inv; // dot(Mx, y) / (norm(Mx)^3 ^ norm(y))
 
@@ -53,8 +53,8 @@ namespace gu {
 			Eigen::Map<Eigen::MatrixX<T>> grad(grad_.data(), grad_.n_rows, grad_.n_cols);
 
 			const Eigen::MatrixX<T> Mx = M * x;
-			const T norm_Mx_inv = 1.0 / Mx.squaredNorm();
-			const T norm_y_inv = 1.0 / y.squaredNorm();
+			const T norm_Mx_inv = 1.0 / Mx.norm();
+			const T norm_y_inv = 1.0 / y.norm();
 			const T a = norm_Mx_inv * norm_y_inv; // 1.0 / (norm(Mx) * norm(y))
 			const T b = (y.transpose() * Mx)(0, 0) * std::pow(norm_Mx_inv, 3) * norm_y_inv; // y^T Mx / (norm(Mx)^3 * norm(y))
 
