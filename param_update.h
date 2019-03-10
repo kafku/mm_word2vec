@@ -207,7 +207,7 @@ public:
 			save_lt(file_name);
 	}
 
-	virtual void load(const std::string& file);
+	virtual void load(const std::string& file, const bool normalize_y = false);
 	virtual void save_lt(const std::string& file);
 	virtual void save_lt_on_exit(const std::string& file) { file_name = file; }
 	virtual void train_syn0(const Word *current_word, const Vector& work, const float learning_rate) override;
@@ -218,6 +218,7 @@ private:
 	const float reg_param_; // regularization parameter
 	const int n_negative_;
 	const uint32_t min_freq_;
+	bool normalize_y_ = false;
 	v::LightMatrix linear_transform;
 	Vector linear_transform_vec;
 	std::vector<Vector> multimodal_data;
@@ -226,7 +227,7 @@ private:
 };
 
 template <typename Word, typename Func>
-void MultimodalGD<Word, Func>::load(const std::string& file) {
+void MultimodalGD<Word, Func>::load(const std::string& file, const bool normalize_y) {
   std::cout << "Loading multimodal features from " << file << std::endl;
 	// load serialized data
 	std::ifstream in(file, std::ifstream::binary);
@@ -245,7 +246,10 @@ void MultimodalGD<Word, Func>::load(const std::string& file) {
 		auto name = Cvt<String>::from_utf8(word->name()->c_str());
 		auto p = vocab2data_idx.emplace(name, i);
 		multimodal_data[i] = std::vector<float>{word->feature()->begin(), word->feature()->end()};
+		if (normalize_y)
+			v::unit(multimodal_data[i]);
 	}
+	this->normalize_y_ = !normalize_y;
   std::cout << "  Loaded " << vocab2data_idx.size() << " multimodal features" << std::endl;
 
 	// initialize linear transformation matrix
@@ -352,16 +356,17 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	int n_violate = 0;
 	for (const auto neg_idx : neg_indices) {
 		const auto& neg_vec = multimodal_data[neg_idx];
-		const float diff = Func::call(pos_vec, l1_copy, lt_copy) - Func::call(neg_vec, l1_copy, lt_copy);
+		const float diff = Func::call(pos_vec, l1_copy, lt_copy, normalize_y_)
+			- Func::call(neg_vec, l1_copy, lt_copy, normalize_y_);
 		if (margin_ <= diff) continue;
 
 		// update gradient for syn0
-		Func::grad_wrt_vec(learning_rate, l1_copy, pos_vec, lt_copy, grad_syn0);
-		Func::grad_wrt_vec(-learning_rate, l1_copy, neg_vec, lt_copy, grad_syn0);
+		Func::grad_wrt_vec(learning_rate, l1_copy, pos_vec, lt_copy, grad_syn0, normalize_y_);
+		Func::grad_wrt_vec(-learning_rate, l1_copy, neg_vec, lt_copy, grad_syn0, normalize_y_);
 
 		// update gradient for linear_transform
-		Func::grad_wrt_mat(learning_rate, l1_copy, pos_vec, lt_copy, grad_lin_trans);
-		Func::grad_wrt_mat(-learning_rate, l1_copy, neg_vec, lt_copy, grad_lin_trans);
+		Func::grad_wrt_mat(learning_rate, l1_copy, pos_vec, lt_copy, grad_lin_trans, normalize_y_);
+		Func::grad_wrt_mat(-learning_rate, l1_copy, neg_vec, lt_copy, grad_lin_trans, normalize_y_);
 
 		++n_violate;
 	}

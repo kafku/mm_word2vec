@@ -208,7 +208,7 @@ int main(int argc, const char *argv[])
 			// FIXME: fix hard-coded values
 			auto MMGD_strategy = std::make_shared<MultimodalGD<Word, gu::CosSim<float>>>(layer1_size, n_words, 5, 0.5, 0.0001, 100);
 			MMGD_strategy->save_lt_on_exit("./lt_mat.hdf5");
-			MMGD_strategy->load(multimodal_path);
+			MMGD_strategy->load(multimodal_path, true);
 			model.syn0_train_ = MMGD_strategy;
 		}
 
