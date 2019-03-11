@@ -38,10 +38,10 @@ namespace gu {
 			const MatrixXT Mx = M * x;
 			const T norm_Mx_inv = 1.0 / Mx.norm();
 			const T norm_y_inv = normalize_y ? 1.0 / y.norm() : 1.0;
-			const T a = norm_Mx_inv * norm_y_inv; // 1.0 / (norm(x) * norm(y))
+			const T a = norm_Mx_inv * norm_y_inv; // 1.0 / (norm(Mx) * norm(y))
 			const T b = (y.transpose() * Mx)(0, 0) * std::pow(norm_Mx_inv, 3) * norm_y_inv; // dot(Mx, y) / (norm(Mx)^3 ^ norm(y))
 
-			// alpha * (M^T y / (norm(Mx) * norm(y)) - dot(x, y) M^T Mx / (norm(Mx)^3 * norm(y)))
+			// alpha * (M^T y / (norm(Mx) * norm(y)) - dot(Mx, y) M^T Mx / (norm(Mx)^3 * norm(y)))
 			grad += alpha * M.transpose() * (y * a - Mx * b);
 		}
 
