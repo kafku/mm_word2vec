@@ -20,12 +20,14 @@
 
 #include <chrono>
 #include <cstdio>
+#include <thread>
 
 #include "v.h"
 #include "param_update.h"
 #include "cvt.h"
 
 #include "model_generated.h"
+#include "ThreadPool/ThreadPool.h"
 
 
 template <class String = std::string>
@@ -189,56 +191,64 @@ struct Word2Vec
 	int train(std::vector<SentenceP>& sentences, int n_workers) {
 		const int total_words = std::accumulate(vocab_.begin(), vocab_.end(), 0,
 			[](int x, const std::pair<String, WordP>& p) { return (int)(x + p.second->count_); });
-		unsigned long current_words = 0;
 		const float alpha0 = alpha_, min_alpha = min_alpha_;
 
-		std::default_random_engine eng(::time(NULL));
 		std::uniform_real_distribution<float> rng(0.0, 1.0);
 
 		size_t n_sentences = sentences.size();
 
-		size_t last_words = 0;
-		auto cstart = std::chrono::high_resolution_clock::now();
 
 		printf("Training %d sentences\n", n_sentences);
 		std::cout << "  iteration: " << iter_ << std::endl;
 
-		#pragma omp parallel for default(shared)
-		for (size_t i = 0; i < n_sentences; ++i) { // parallel train
-			auto sentence = sentences[i].get();
-			if (sentence->tokens_.empty())
-				continue;
-			size_t len = sentence->tokens_.size();
-			for (size_t i=0; i<len; ++i) {
-				auto it = vocab_.find(sentence->tokens_[i]);
-				if (it == vocab_.end()) continue; // skip OOV
-				Word *word = it->second.get();
-				// subsampling
-				if (sample_ > 0) {
-					float rnd = (sqrt(word->count_ / (sample_ * total_words)) + 1) * (sample_ * total_words) / word->count_;
-					if (rnd < rng(eng)) continue;
-				}
-				sentence->words_.emplace_back(it->second.get());
-			}
+		if (n_workers == 0)
+			n_workers = std::thread::hardware_concurrency();
+		std::unique_ptr<ThreadPool> pool(new ThreadPool(n_workers));
 
-			for (int i = 0; i < iter_; ++i) { // iterations
-				float alpha = std::max(min_alpha, float(alpha0 * (1.0 - 1.0 * current_words / (iter_ * total_words))));
-				size_t words = train_sentence(*sentence, alpha);
+		std::atomic<unsigned long> current_words(0);
+		std::atomic<size_t> last_words(0);
+		auto cstart = std::chrono::high_resolution_clock::now();
+		for (size_t i = 0; i < n_sentences; ++i) { // loop sentences
+			pool->enqueue([this, total_words, alpha0, min_alpha, n_sentences, &cstart, &rng, &current_words, &last_words, &sentences](const int i) {
+					thread_local std::default_random_engine eng(::time(NULL));
 
-				#pragma omp atomic
-				current_words += words;
+					auto sentence = sentences[i].get();
+					if (sentence->tokens_.empty())
+						return;
 
-				if (current_words - last_words > 1024 * 100 || i == n_sentences - 1) {
-					auto cend = std::chrono::high_resolution_clock::now();
-					auto duration = std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count();
-					printf("training alpha: %.4f progress: %.2f%% words per sec: %.3fK\n", alpha,
-							current_words * 100.0/(iter_ * total_words),
-							(current_words - last_words) * 1000.0 / duration);
-					last_words = current_words;
-					cstart = cend;
-				}
-			} // iterations
-		} // parallel train
+					size_t len = sentence->tokens_.size();
+					for (size_t i=0; i < len; ++i) {
+						auto it = vocab_.find(sentence->tokens_[i]);
+						if (it == vocab_.end()) continue; // skip OOV
+						Word *word = it->second.get();
+						// subsampling
+						if (sample_ > 0) {
+							float rnd = (sqrt(word->count_ / (sample_ * total_words)) + 1) * (sample_ * total_words) / word->count_;
+							if (rnd < rng(eng)) continue;
+						}
+						sentence->words_.emplace_back(it->second.get());
+					}
+
+					for (int i = 0; i < iter_; ++i) { // iterations
+						float alpha = std::max(min_alpha, float(alpha0 * (1.0 - 1.0 * current_words / (iter_ * total_words))));
+						size_t words = train_sentence(*sentence, alpha);
+
+						current_words += words;
+
+						if (current_words - last_words > 1024 * 100 || i == n_sentences - 1) {
+							auto cend = std::chrono::high_resolution_clock::now();
+							auto duration = std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count();
+							printf("training alpha: %.4f progress: %.2f%% words per sec: %.3fK\n", alpha,
+									current_words * 100.0/(iter_ * total_words),
+									(current_words - last_words) * 1000.0 / duration);
+							last_words = current_words.load();
+							cstart = cend;
+						}
+					} // iterations
+			}, i);
+		} // loop sentences
+
+		pool.reset();
 
 		syn0norm_ = syn0_train_->syn0_;
 		for (auto& v: syn0norm_) v::unit(v);
