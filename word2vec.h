@@ -210,41 +210,41 @@ struct Word2Vec
 		auto cstart = std::chrono::high_resolution_clock::now();
 		for (size_t i = 0; i < n_sentences; ++i) { // loop sentences
 			pool->enqueue([this, total_words, alpha0, min_alpha, n_sentences, &cstart, &rng, &current_words, &last_words, &sentences](const int i) {
-					thread_local std::default_random_engine eng(::time(NULL));
+				thread_local std::default_random_engine eng(::time(NULL));
 
-					auto sentence = sentences[i].get();
-					if (sentence->tokens_.empty())
-						return;
+				auto sentence = sentences[i].get();
+				if (sentence->tokens_.empty())
+					return;
 
-					size_t len = sentence->tokens_.size();
-					for (size_t i=0; i < len; ++i) {
-						auto it = vocab_.find(sentence->tokens_[i]);
-						if (it == vocab_.end()) continue; // skip OOV
-						Word *word = it->second.get();
-						// subsampling
-						if (sample_ > 0) {
-							float rnd = (sqrt(word->count_ / (sample_ * total_words)) + 1) * (sample_ * total_words) / word->count_;
-							if (rnd < rng(eng)) continue;
-						}
-						sentence->words_.emplace_back(it->second.get());
+				size_t len = sentence->tokens_.size();
+				for (size_t i=0; i < len; ++i) {
+					auto it = vocab_.find(sentence->tokens_[i]);
+					if (it == vocab_.end()) continue; // skip OOV
+					Word *word = it->second.get();
+					// subsampling
+					if (sample_ > 0) {
+						float rnd = (sqrt(word->count_ / (sample_ * total_words)) + 1) * (sample_ * total_words) / word->count_;
+						if (rnd < rng(eng)) continue;
 					}
+					sentence->words_.emplace_back(it->second.get());
+				}
 
-					for (int i = 0; i < iter_; ++i) { // iterations
-						float alpha = std::max(min_alpha, float(alpha0 * (1.0 - 1.0 * current_words / (iter_ * total_words))));
-						size_t words = train_sentence(*sentence, alpha);
+				for (int i = 0; i < iter_; ++i) { // iterations
+					float alpha = std::max(min_alpha, float(alpha0 * (1.0 - 1.0 * current_words / (iter_ * total_words))));
+					size_t words = train_sentence(*sentence, alpha);
 
-						current_words += words;
+					current_words += words;
 
-						if (current_words - last_words > 1024 * 100 || i == n_sentences - 1) {
-							auto cend = std::chrono::high_resolution_clock::now();
-							auto duration = std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count();
-							printf("training alpha: %.4f progress: %.2f%% words per sec: %.3fK\n", alpha,
-									current_words * 100.0/(iter_ * total_words),
-									(current_words - last_words) * 1000.0 / duration);
-							last_words = current_words.load();
-							cstart = cend;
-						}
-					} // iterations
+					if (current_words - last_words > 1024 * 100 || i == n_sentences - 1) {
+						auto cend = std::chrono::high_resolution_clock::now();
+						auto duration = std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count();
+						printf("training alpha: %.4f progress: %.2f%% words per sec: %.3fK\n", alpha,
+								current_words * 100.0/(iter_ * total_words),
+								(current_words - last_words) * 1000.0 / duration);
+						last_words = current_words.load();
+						cstart = cend;
+					}
+				} // iterations
 			}, i);
 		} // loop sentences
 
