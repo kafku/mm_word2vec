@@ -1,0 +1,5 @@
+word2vec
+word2vec_zh
+*.bin
+questions-words.txt
+text8

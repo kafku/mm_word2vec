@@ -23,45 +23,10 @@
 
 #include "v.h"
 #include "param_update.h"
+#include "cvt.h"
 
 #include "model_generated.h"
 
-template <typename T> struct Cvt;
-
-template <> struct Cvt<std::string> {
-	static const std::string& to_utf8(const std::string& s) { return s; }
-	static const std::string& from_utf8(const std::string& s) { return s; }
-};
-
-#if defined(_LIBCPP_BEGIN_NAMESPACE_STD)
-#include <codecvt>
-template <> struct Cvt<std::u16string> {
-	static std::string to_utf8(const std::u16string& in) {
-	    std::wstring_convert<std::codecvt_utf8<char16_t>, char16_t> cv;
-    	return cv.to_bytes(in.data());
-	}
-
-	static std::u16string from_utf8(const std::string& in) {
-	    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> cv;
-    	return cv.from_bytes(in.data());
-	}
-};
-#else // gcc has no <codecvt>
-#include "utf8cpp/utf8.h"
-template <> struct Cvt<std::u16string> {
-	static std::string to_utf8(const std::u16string& in) {
-		std::string out;
-		utf8::utf16to8(in.begin(), in.end(), std::back_inserter(out));
-		return out;
-	}
-
-	static std::u16string from_utf8(const std::string& in) {
-		std::u16string out;
-		utf8::utf8to16(in.begin(), in.end(), std::back_inserter(out));
-		return out;
-	}
-};
-#endif
 
 template <class String = std::string>
 struct Word2Vec
@@ -97,8 +62,10 @@ struct Word2Vec
 	};
 	typedef std::shared_ptr<Sentence> SentenceP;
 
-	std::vector<Vector> syn0_;
+	// training strategy
+	std::shared_ptr<Syn0TrainStrategy<Word>> syn0_train_;
 	std::vector<Vector> syn0norm_;
+	std::shared_ptr<Syn1TrainStrategy<Word>> syn1_train_;
 
 	std::unordered_map<String, WordP> vocab_;
 	std::vector<Word *> words_;
@@ -109,7 +76,6 @@ struct Word2Vec
 	const float sample_; // subsampling
 
 	const int min_count_; // minimum frequency of word
-	const int negative_; // # of negative samples
 
 	const float alpha_, min_alpha_; // learning rate
 
@@ -119,9 +85,9 @@ struct Word2Vec
 	const int iter_;
 
 
-	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5, int negative = 5,
-			float alpha = 0.025, float min_alpha = 0.0001, const std::string& train_method = "HS", const int iter = 5)
-		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count), syn1_train_method_(train_method), negative_(negative),
+	Word2Vec(int size = 100, int window = 5, float sample = 0.001, int min_count = 5,
+			float alpha = 0.025, float min_alpha = 0.0001, const int iter = 5)
+		:layer1_size_(size), window_(window), sample_(sample), min_count_(min_count),
 		alpha_(alpha), min_alpha_(min_alpha), iter_(iter), phrase_(false), phrase_threshold_(100) {}
 
 	bool has(const String& w) const { return vocab_.find(w) != vocab_.end(); }
@@ -217,35 +183,6 @@ struct Word2Vec
 
 		printf("collected %lu distinct words with min_count=%d\n", vocab_.size(), min_count_);
 
-		n_words = words_.size();
-		if (syn1_train_method_ == "HS") { // Hierarchical Softmax
-			std::cout << "Training method: Hierarchical Softmax" << std::endl;
-			std::shared_ptr<HierarchicalSoftmax<Word>> HS_strategy = std::make_shared<HierarchicalSoftmax<Word>>(layer1_size_, n_words);
-			HS_strategy->build_tree(words_);
-			syn1_train_ = HS_strategy;
-		}
-		else if (syn1_train_method_ == "NS") { // Negative Sampling
-			std::cout << "Training method: Negative Sampling" << std::endl;
-			std::cout << "  # of negative samples : " << negative_ << std::endl;
-			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size_, n_words, negative_);
-			NS_strategy->update_distribution(words_);
-			syn1_train_ = NS_strategy;
-		}
-		else {
-			// NOTE: invalid option
-			// TODO: show error message
-			return -1;
-		}
-
-		std::cout << "Initializing syn0_..." << std::endl;
-		std::default_random_engine eng(::time(NULL));
-		std::uniform_real_distribution<float> rng(0.0, 1.0);
-		syn0_.resize(n_words);
-		for (auto& s: syn0_) {
-			s.resize(layer1_size_);
-			for (auto& x: s) x = (rng(eng) - 0.5) / layer1_size_;
-		}
-
 		return 0;
 	}
 
@@ -274,7 +211,7 @@ struct Word2Vec
 			size_t len = sentence->tokens_.size();
 			for (size_t i=0; i<len; ++i) {
 				auto it = vocab_.find(sentence->tokens_[i]);
-				if (it == vocab_.end()) continue;
+				if (it == vocab_.end()) continue; // skip OOV
 				Word *word = it->second.get();
 				// subsampling
 				if (sample_ > 0) {
@@ -303,7 +240,7 @@ struct Word2Vec
 			} // iterations
 		} // parallel train
 
-		syn0norm_ = syn0_;
+		syn0norm_ = syn0_train_->syn0_;
 		for (auto& v: syn0norm_) v::unit(v);
 
 		return 0;
@@ -318,7 +255,7 @@ struct Word2Vec
 		std::vector<flatbuffers::Offset<word2vec::Word>> ws;
 		for (auto w: words) {
 			auto name = fbb.CreateString(Cvt<String>::to_utf8(w->text_));
-			ws.push_back(word2vec::CreateWord(fbb, name, fbb.CreateVector(syn0_[w->index_])));
+			ws.push_back(word2vec::CreateWord(fbb, name, fbb.CreateVector(syn0_train_->syn0_[w->index_])));
 		}
 
 		auto dict = word2vec::CreateDict(fbb, fbb.CreateVector(ws.data(), ws.size()));
@@ -331,14 +268,14 @@ struct Word2Vec
 
 	int save_text(const std::string& file) const {
 		std::ofstream out(file, std::ofstream::out);
-		out << syn0_.size() << " " << syn0_[0].size() << std::endl;
+		out << syn0_train_->syn0_.size() << " " << syn0_train_->syn0_[0].size() << std::endl;
 
 		std::vector<Word *> words = words_;
 		std::sort(words.begin(), words.end(), [](Word *w1, Word *w2) { return w1->count_ > w2->count_; });
 
 		for (auto w: words) {
 			out << Cvt<String>::to_utf8(w->text_);
-			for (auto i: syn0_[w->index_]) out << " " << i;
+			for (auto i: syn0_train_->syn0_[w->index_]) out << " " << i;
 			out << std::endl;
 		}
 
@@ -354,22 +291,26 @@ struct Word2Vec
 		const word2vec::Dict *dict = word2vec::GetDict(s.data());
 		size_t n_words = dict->words()->Length();
 
-		syn0_.clear(); vocab_.clear(); words_.clear();
-		syn0_.resize(n_words);
+		decltype(syn0_train_->syn0_) syn0_tmp;
+		syn0_tmp.clear(); vocab_.clear(); words_.clear();
+		syn0_tmp.resize(n_words);
 
 		for (int i=0; i<n_words; ++i) {
 			const auto *word = dict->words()->Get(i);
 			auto name = Cvt<String>::from_utf8(word->name()->c_str());
 			auto p = vocab_.emplace(name, std::make_shared<Word>(i, name, 0));
 			words_.push_back(p.first->second.get());
-			syn0_[i] = std::vector<float>{word->feature()->begin(), word->feature()->end()};
+			syn0_tmp[i] = std::vector<float>{word->feature()->begin(), word->feature()->end()};
 		}
 
-		layer1_size_ = syn0_[0].size();
+		layer1_size_ = syn0_tmp[0].size();
 		printf("%d words loaded\n", n_words);
 
-		syn0norm_ = syn0_;
+		syn0norm_ = syn0_tmp;
 		for (auto& v: syn0norm_) v::unit(v);
+
+		syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size_, n_words);
+		syn0_train_->syn0_ = std::move(syn0_tmp);
 
 		return 0;
 	}
@@ -383,8 +324,9 @@ struct Word2Vec
 		std::istringstream iss(line);
 		iss >> n_words >> layer1_size;
 
-		syn0_.clear(); vocab_.clear(); words_.clear();
-		syn0_.resize(n_words);
+		decltype(syn0_train_->syn0_) syn0_tmp;
+		syn0_tmp.clear(); vocab_.clear(); words_.clear();
+		syn0_tmp.resize(n_words);
 		for (int i=0; i<n_words; ++i) {
 			if (! std::getline(in, line)) return -1;
 
@@ -394,17 +336,20 @@ struct Word2Vec
 
 			auto p = vocab_.emplace(Cvt<String>::from_utf8(text), WordP(new Word{i, Cvt<String>::from_utf8(text), 0}));
 			words_.push_back(p.first->second.get());
-			syn0_[i].resize(layer1_size);
+			syn0_tmp[i].resize(layer1_size);
 			for(int j=0; j<layer1_size; ++j) {
-				iss >> syn0_[i][j];
+				iss >> syn0_tmp[i][j];
 			}
 		}
 
 		layer1_size_ = layer1_size;
 		printf("%d words loaded\n", n_words);
 
-		syn0norm_ = syn0_;
+		syn0norm_ = syn0_tmp;
 		for (auto& v: syn0norm_) v::unit(v);
+
+		syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size_, n_words);
+		syn0_train_->syn0_ = std::move(syn0_tmp);
 
 		return 0;
 	}
@@ -413,7 +358,7 @@ struct Word2Vec
 		static Vector nil;
 		auto it = vocab_.find(w);
 		if (it == vocab_.end()) return nil;
-		return syn0_[it->second->index_];
+		return syn0_train_->syn0_[it->second->index_];
 	}
 
 	size_t word_vector_size() const { return layer1_size_; }
@@ -483,19 +428,20 @@ private:
 		const int sentence_length = sentence.words_.size();
 		const int reduced_window = rand() % window_;
 		for (int i = 0; i < sentence_length; ++i) { // loop: tokens in corpus
-			const Word& current_word = *sentence.words_[i];
+			const Word* current_word = sentence.words_[i];
 
 			int j = std::max(0, i - window_ + reduced_window);
 			const int k = std::min(sentence_length, i + window_ + 1 - reduced_window);
 			for (; j < k; ++j) { // loop: window
 				if (j == i) continue;
 				const Word *word = sentence.words_[j]; // predicted-word index
-				auto& l1 = syn0_[current_word.index_];
+				auto& l1 = syn0_train_->syn0_[current_word->index_];
 
 				// udate parameters by Hierarchical Softmax
 				std::fill(grad_syn0.begin(), grad_syn0.end(), 0);
 				syn1_train_->train_syn1(word, l1, alpha, grad_syn0); // update syn1_
-				v::saxpy(l1, 1.0, grad_syn0); // syn0_[current_word->index] += grad_syn0;
+				//v::saxpy(l1, 1.0, grad_syn0); // syn0_[current_word->index] += grad_syn0;
+				syn0_train_->train_syn0(current_word, grad_syn0, alpha);
 			} // end loop: window
 			++count;
 		} // end loop: tokens in corpus
@@ -506,12 +452,9 @@ private:
 	float similarity(const String& w1, const String& w2) const {
 		auto it1 = vocab_.find(w1), it2 = vocab_.find(w2);
 		if (it1 != vocab_.end() && it2 != vocab_.end())
-			return v::dot(syn0_[it1->second->index_], syn0_[it2->second->index_]);
+			return v::dot(syn0_train_->syn0_[it1->second->index_], syn0_train_->syn0_[it2->second->index_]);
 		return 0;
 	}
 
-	// training strategy
-	std::string syn1_train_method_; // "NS" : negative sampling, "HS" : hierarchical softmax
-	std::shared_ptr<Syn1TrainStrategy<Word>> syn1_train_;
 };
 

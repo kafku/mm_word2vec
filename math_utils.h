@@ -20,12 +20,13 @@ namespace cheap_math {
 
 	float sigmoid(const float f) {
 		constexpr auto table = my_utils::make_array<max_size>(sigmoid_disc<max_size, max_exp>);
-		const int fi = int((f + max_exp) * (float(max_size) / float(max_exp) / 2.0));
 		if (f >= max_exp)
 			return 1.0;
 		else if (f <= -max_exp)
 			return 0;
-		else
-			return table[fi];
+
+		const int fi = std::min(max_size - 1,
+				std::max(int((f + max_exp) * (float(max_size) / float(max_exp) / 2.0)), 0));
+		return table[fi];
 	}
 }

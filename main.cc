@@ -2,10 +2,12 @@
 // g++-4.8 -ow2v -fopenmp -std=c++0x -Ofast -march=native -funroll-loops  main.cc  -lpthread
 
 #include "word2vec.h"
+#include "grad_utils.h"
 #include <iostream>
 #include <string>
 #include <initializer_list>
 #include <boost/program_options.hpp>
+#include <glog/logging.h>
 
 int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_vocab = 30000) {
 	std::ifstream in(questions);
@@ -51,6 +53,10 @@ int accuracy(Word2Vec<std::string>& model, std::string questions, int restrict_v
 
 int main(int argc, const char *argv[])
 {
+	// seg glog
+	google::InitGoogleLogging(argv[0]);
+	google::InstallFailureSignalHandler();
+
 	// parse options
 	namespace po = boost::program_options;
 	po::options_description description("Allowed options");
@@ -69,6 +75,7 @@ int main(int argc, const char *argv[])
 		("format,f", po::value<std::string>()->default_value("bin"), "Output file format: bin/text")
 		("iteration,i", po::value<int>()->default_value(5), "The number of iterations")
 		("method,M", po::value<std::string>()->default_value("HS"), "Methos: HierarchicalSoftmax(HS)/NegativeSampling(NS)")
+		("multimodal-input,I", po::value<std::string>()->default_value(""), "Path to multimodal feature file")
 		("input_path", po::value<std::string>(), "Path to input file");
 
 	po::positional_options_description pos_description;
@@ -98,6 +105,7 @@ int main(int argc, const char *argv[])
 	const auto file_format = vm["format"].as<std::string>();
 	const auto n_iterations = vm["iteration"].as<int>();
 	const auto train_method = vm["method"].as<std::string>();
+	const auto multimodal_path = vm["multimodal-input"].as<std::string>();
 
 	// simple check for options
 	if ( mode != "train" && mode != "test")
@@ -112,9 +120,10 @@ int main(int argc, const char *argv[])
 	std::cout << "Input file: " << input_path << std::endl;
 
 	// initalize model
-	Word2Vec<std::string> model(dim, window, sample, min_count, negative, alpha, min_alpha, train_method, n_iterations);
+	Word2Vec<std::string> model(dim, window, sample, min_count, alpha, min_alpha, n_iterations);
 	using Sentence = Word2Vec<std::string>::Sentence;
 	using SentenceP = Word2Vec<std::string>::SentenceP;
+	using Word = Word2Vec<std::string>::Word;
 
 	// model.phrase_ = true;
 
@@ -169,6 +178,39 @@ int main(int argc, const char *argv[])
 		model.build_vocab(sentences);
 		auto cend = std::chrono::high_resolution_clock::now();
 		printf("load vocab: %.4f seconds\n", std::chrono::duration_cast<std::chrono::microseconds>(cend - cstart).count() / 1000000.0);
+
+		// set training strategies
+		const auto n_words = model.words_.size();
+		const auto layer1_size = model.layer1_size_;
+		if (train_method == "HS") { // Hierarchical Softmax
+			std::cout << "Training method: Hierarchical Softmax" << std::endl;
+			std::shared_ptr<HierarchicalSoftmax<Word>> HS_strategy = std::make_shared<HierarchicalSoftmax<Word>>(layer1_size, n_words);
+			HS_strategy->build_tree(model.words_);
+			model.syn1_train_ = HS_strategy;
+		}
+		else if (train_method == "NS") { // Negative Sampling
+			std::cout << "Training method: Negative Sampling" << std::endl;
+			std::cout << "  # of negative samples : " << negative << std::endl;
+			std::shared_ptr<NegativeSampling<Word>> NS_strategy = std::make_shared<NegativeSampling<Word>>(layer1_size, n_words, negative);
+			NS_strategy->update_distribution(model.words_);
+			model.syn1_train_ = NS_strategy;
+		}
+		else {
+			// NOTE: invalid option
+			// TODO: show error message
+			return -1;
+		}
+
+		if (multimodal_path.size() == 0) {
+			model.syn0_train_ = std::make_shared<SimpleGD<Word>>(layer1_size, n_words);
+		}
+		else {
+			// FIXME: fix hard-coded values
+			auto MMGD_strategy = std::make_shared<MultimodalGD<Word, gu::CosSim<float>>>(layer1_size, n_words, 5, 0.5, 0.0001, 100);
+			MMGD_strategy->save_lt_on_exit("./lt_mat.hdf5");
+			MMGD_strategy->load(multimodal_path, true);
+			model.syn0_train_ = MMGD_strategy;
+		}
 
 		cstart = cend;
 		model.train(sentences, n_workers);
