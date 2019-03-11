@@ -40,7 +40,11 @@ Allowed options:
   --input_path arg                      Path to input file
 ```
 
-With the ` --multimodal-input` option, it works as multimodal skip-gram model, otherwise it just the same as the ordinary word2vec.
+With the ` --multimodal-input` option, it works as multimodal skip-gram model, otherwise it just the same as the ordinary word2vec. Image search demo can be found in [`notebook/image_search.ipynb`](https://github.com/kafku/mm_word2vec/blob/master/notebook/image_search.ipynb).
+
+## Note
+
+- The parameter learning scheme may be different from that of the original MM-Skipgram.
 
 ## Reference
 
