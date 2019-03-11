@@ -376,7 +376,7 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	#pragma omp critical
 	{
 		// update matrix
-		v::saxpy(linear_transform, -1.0, grad_lin_trans); // update linear_transform
+		v::saxpy(linear_transform, 1.0, grad_lin_trans); // update linear_transform matrix
 		v::saxpy(linear_transform, -learning_rate * reg_param_, lt_copy); // regularization
 	}
 }
