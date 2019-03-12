@@ -9,6 +9,7 @@
 #include <stack>
 #include <algorithm>
 #include <random>
+#include <mutex>
 #include <boost/utility.hpp>
 #include <H5Cpp.h>
 #include "math_utils.h"
@@ -111,8 +112,8 @@ private:
 
 template <typename Word>
 void NegativeSampling<Word>::train_syn1(const Word *current_word, const Vector& l1, const float learning_rate, Vector& work) {
-	std::random_device seed_gen;
-	std::default_random_engine engine(seed_gen());
+	thread_local std::random_device seed_gen;
+	thread_local std::default_random_engine engine(seed_gen());
 	const auto& pred_word_idx = current_word->index_;
 	for (int d = 0; d < n_negative_ + 1; ++d) { // a predicted contex word & negative words
 		const int label = (d == 0? 1: 0);
@@ -224,6 +225,7 @@ private:
 	std::vector<Vector> multimodal_data;
 	std::unordered_map<String, size_t> vocab2data_idx;
 	std::uniform_int_distribution<size_t> distribution;
+	std::mutex mtx;
 };
 
 template <typename Word, typename Func>
@@ -373,8 +375,8 @@ void MultimodalGD<Word, Func>::train_syn0(const Word *current_word, const Vector
 	if (n_violate == 0) return; // do nothing when no violations
 
 	v::saxpy(l1, 1.0, grad_syn0); // update syn0_
-	#pragma omp critical
 	{
+		std::unique_lock<std::mutex> lock(mtx);
 		// update matrix
 		v::saxpy(linear_transform, 1.0, grad_lin_trans); // update linear_transform matrix
 		v::saxpy(linear_transform, -learning_rate * reg_param_, lt_copy); // regularization
