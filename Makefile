@@ -7,8 +7,7 @@ OMP =
 DBG = -g
 INCLUDE=-I./eigen-git-mirror
 CXX_FLAGS=$(DBG) $(WARN) $(OPTI) $(OMP) -std=c++11 -march=native -funroll-loops -ftemplate-depth=1010
-CXX_FLAGS += -DEIGEN_DEFAULT_TO_ROW_MAJOR
-CXX_FLAGS += -DEIGEN_USE_BLAS
+CXX_FLAGS += -DEIGEN_DEFAULT_TO_ROW_MAJOR -DEIGEN_USE_BLAS -DEIGEN_DONT_PARALLELIZE
 LD_FLAGS=-lpthread -lboost_program_options -lopenblas -lglog -lhdf5 -lhdf5_cpp
 
 HEADERS=$(shell ls *.h)
