@@ -11,7 +11,7 @@ CXX_FLAGS += -DEIGEN_DEFAULT_TO_ROW_MAJOR
 CXX_FLAGS += -DEIGEN_USE_BLAS
 LD_FLAGS=-lpthread -lboost_program_options -lopenblas -lglog -lhdf5 -lhdf5_cpp
 
-HEADERS=$(ls *.h)
+HEADERS=$(shell ls *.h)
 
 
 
