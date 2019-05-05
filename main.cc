@@ -82,7 +82,15 @@ int main(int argc, const char *argv[])
 	pos_description.add("input_path", 1);
 
 	po::variables_map vm;
-	po::store(po::command_line_parser(argc, argv).options(description).positional(pos_description).run(), vm);
+	try {
+		po::store(po::command_line_parser(argc, argv).options(description).positional(pos_description).run(), vm);
+	}
+	catch(std::exception& e) {
+		std::cerr << e.what() << std::endl;
+		std::cout << "Usage : " << argv[0] << " [options] input_path" << std::endl;
+		std::cout << description << std::endl;
+		return 1;
+	}
 	po::notify(vm);
 
 	if (vm.count("help")) {
