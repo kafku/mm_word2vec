@@ -80,7 +80,7 @@ int main(int argc, const char *argv[])
 		("mul-margin", po::value<float>()->default_value(0.5), "Margin used in the multimodal objective")
 		("mul-regparam", po::value<float>()->default_value(0.0001), "Regularization parameter used in the multimodal objective")
 		("mul-min-count", po::value<int>()->default_value(100), "The minimum frequency of words associated with images.")
-		("input_path", po::value<std::string>(), "Path to input file");
+		("input_path", po::value<std::string>()->required(), "Path to input file");
 
 	po::positional_options_description pos_description;
 	pos_description.add("input_path", 1);
@@ -88,6 +88,7 @@ int main(int argc, const char *argv[])
 	po::variables_map vm;
 	try {
 		po::store(po::command_line_parser(argc, argv).options(description).positional(pos_description).run(), vm);
+		po::notify(vm);
 	}
 	catch(std::exception& e) {
 		std::cerr << e.what() << std::endl;
@@ -95,7 +96,6 @@ int main(int argc, const char *argv[])
 		std::cout << description << std::endl;
 		return 1;
 	}
-	po::notify(vm);
 
 	if (vm.count("help")) {
 		std::cout << "Usage : " << argv[0] << " [options] input_path" << std::endl;
