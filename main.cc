@@ -80,6 +80,7 @@ int main(int argc, const char *argv[])
 		("mul-margin", po::value<float>()->default_value(0.5), "Margin used in the multimodal objective")
 		("mul-regparam", po::value<float>()->default_value(0.0001), "Regularization parameter used in the multimodal objective")
 		("mul-min-count", po::value<int>()->default_value(100), "The minimum frequency of words associated with images.")
+		("mul-output", po::value<std::string>()->default_value("./lt_mat.hdf5"), "Output path of linear transformation.")
 		("input_path", po::value<std::string>()->required(), "Path to input file");
 
 	po::positional_options_description pos_description;
@@ -122,6 +123,7 @@ int main(int argc, const char *argv[])
 	const auto mul_margin = vm["mul-margin"].as<float>();
 	const auto mul_regparam = vm["mul-regparam"].as<float>();
 	const auto mul_min_count = vm["mul-min-count"].as<int>();
+	const auto mul_output_path = vm["mul-output"].as<std::string>();
 
 	// simple check for options
 	if ( mode != "train" && mode != "test")
@@ -224,7 +226,7 @@ int main(int argc, const char *argv[])
 			// FIXME: fix hard-coded values
 			auto MMGD_strategy = std::make_shared<MultimodalGD<Word, gu::CosSim<float>>>(
 					layer1_size, n_words, mul_n_negative, mul_margin, mul_regparam, mul_min_count);
-			MMGD_strategy->save_lt_on_exit("./lt_mat.hdf5");
+			MMGD_strategy->save_lt_on_exit(mul_output_path);
 			MMGD_strategy->load(multimodal_path, true);
 			model.syn0_train_ = MMGD_strategy;
 		}
