@@ -76,6 +76,10 @@ int main(int argc, const char *argv[])
 		("iteration,i", po::value<int>()->default_value(5), "The number of iterations")
 		("method,M", po::value<std::string>()->default_value("HS"), "Methods: HierarchicalSoftmax(HS)/NegativeSampling(NS)")
 		("multimodal-input,I", po::value<std::string>()->default_value(""), "Path to multimodal feature file")
+		("mul-negative", po::value<int>()->default_value(5), "The number of negative images.")
+		("mul-margin", po::value<float>()->default_value(0.5), "Margin used in the multimodal objective")
+		("mul-regparam", po::value<float>()->default_value(0.0001), "Regularization parameter used in the multimodal objective")
+		("mul-min-count", po::value<int>()->default_value(100), "The minimum frequency of words associated with images.")
 		("input_path", po::value<std::string>(), "Path to input file");
 
 	po::positional_options_description pos_description;
@@ -114,6 +118,10 @@ int main(int argc, const char *argv[])
 	const auto n_iterations = vm["iteration"].as<int>();
 	const auto train_method = vm["method"].as<std::string>();
 	const auto multimodal_path = vm["multimodal-input"].as<std::string>();
+	const auto mul_n_negative = vm["mul-negative"].as<int>();
+	const auto mul_margin = vm["mul-margin"].as<float>();
+	const auto mul_regparam = vm["mul-regparam"].as<float>();
+	const auto mul_min_count = vm["mul-min-count"].as<int>();
 
 	// simple check for options
 	if ( mode != "train" && mode != "test")
@@ -214,7 +222,8 @@ int main(int argc, const char *argv[])
 		}
 		else {
 			// FIXME: fix hard-coded values
-			auto MMGD_strategy = std::make_shared<MultimodalGD<Word, gu::CosSim<float>>>(layer1_size, n_words, 5, 0.5, 0.0001, 100);
+			auto MMGD_strategy = std::make_shared<MultimodalGD<Word, gu::CosSim<float>>>(
+					layer1_size, n_words, mul_n_negative, mul_margin, mul_regparam, mul_min_count);
 			MMGD_strategy->save_lt_on_exit("./lt_mat.hdf5");
 			MMGD_strategy->load(multimodal_path, true);
 			model.syn0_train_ = MMGD_strategy;
